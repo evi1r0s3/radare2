@@ -2868,7 +2868,13 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 				}
 				type = r_reg_type_by_name (str + 2);
 				r_debug_reg_sync (core->dbg, type, false);
-				r_debug_reg_list (core->dbg, type, size, NULL, rad, use_color);
+				PJ *pj = (tolower (rad) == 'j')? r_core_pj_new (core): NULL;
+				r_debug_reg_list (core->dbg, type, size, pj, rad, use_color);
+				if (pj) {
+					char *s = pj_drain (pj);
+					r_cons_printf ("%s\n", s);
+					free (s);
+				}
 			} else {
 				if (type != R_REG_TYPE_LAST) {
 					r_debug_reg_sync (core->dbg, type, false);
@@ -3637,17 +3643,21 @@ static void r_core_cmd_bp(RCore *core, const char *input) {
 		break;
 	case 'm': // "dbm"
 		if (input[2] && input[3]) {
-			char *string = strdup (input + 3);
-			char *module = NULL;
+			char *module = r_str_trim_dup (input + 3);
 			st64 delta = 0;
-
-			module = strtok (string, " ");
-			delta = (ut64)r_num_math (core->num, strtok (NULL, ""));
+			char *sdelta = (char *)r_str_lchr (module, ' ');
+			if (!sdelta) {
+				eprintf ("Usage: dbm [modulename] [delta]\n");
+				free (module);
+				break;
+			}
+			*sdelta++ = 0;
+			delta = (ut64)r_num_math (core->num, sdelta);
 			bpi = r_debug_bp_add (core->dbg, 0, hwbp, false, 0, module, delta);
 			if (!bpi) {
 				eprintf ("Cannot set breakpoint.\n");
 			}
-			free (string);
+			free (module);
 		}
 		break;
 	case 'j': r_bp_list (core->dbg->bp, 'j'); break;

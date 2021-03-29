@@ -30,7 +30,7 @@
 #include "r_util/r_print.h"
 #include "r_crypto.h"
 #include "r_bind.h"
-#include "r_util/r_annotated_code.h"
+#include "r_codemeta.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -869,6 +869,9 @@ R_API int r_line_hist_offset_down(RLine *line);
 
 // TODO : move into debug or syscall++
 R_API char *cmd_syscall_dostr(RCore *core, st64 num, ut64 addr);
+R_API void cmd_agfb(RCore *core);
+R_API void cmd_agfb2(RCore *core, const char *s);
+R_API void cmd_agfb3(RCore *core, const char *s, int x, int y);
 
 /* tasks */
 
@@ -958,7 +961,7 @@ R_API bool r_core_plugin_fini(RCmd *cmd);
  * 
  * @param code Pointer to a RAnnotatedCode.
  */
-R_API void r_core_annotated_code_print_json(RAnnotatedCode *code);
+R_API void r_codemeta_print_json(RCodeMeta *code);
 /**
  * @brief Prints the decompiled code from the specified RAnnotatedCode.
  * 
@@ -971,7 +974,7 @@ R_API void r_core_annotated_code_print_json(RAnnotatedCode *code);
  * @param code Pointer to a RAnnotatedCode.
  * @param line_offsets Pointer to a @ref RVector that contains offsets for the decompiled code.
  */
-R_API void r_core_annotated_code_print(RAnnotatedCode *code, RVector *line_offsets);
+R_API void r_codemeta_print(RCodeMeta *code, RVector *line_offsets);
 /**
  * @brief  Prints the decompiled code as comments
  * 
@@ -980,7 +983,7 @@ R_API void r_core_annotated_code_print(RAnnotatedCode *code, RVector *line_offse
  * 
  * @param code Pointer to a RAnnotatedCode.
  */
-R_API void r_core_annotated_code_print_comment_cmds(RAnnotatedCode *code);
+R_API void r_codemeta_print_comment_cmds(RCodeMeta *code);
 
 #endif
 

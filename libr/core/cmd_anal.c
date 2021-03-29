@@ -1209,7 +1209,7 @@ static int cmd_an(RCore *core, bool use_json, const char *name) {
 				r_cons_printf ("0x%" PFMT64x "\n", tgt_addr);
 			} else {
 				pj_o (pj);
-				pj_ks (pj, "name", name);
+				pj_ks (pj, "name", name? name: "");
 				pj_ks (pj, "type", "address");
 				pj_kn (pj, "offset", tgt_addr);
 				pj_end (pj);
@@ -8895,6 +8895,34 @@ static void r_core_graph_print(RCore *core, RGraph /*<RGraphNodeInfo>*/ *graph, 
 	}
 }
 
+R_API void cmd_agfb(RCore *core) {
+	const int c = r_config_get_b (core->config, "scr.color");
+	r_config_set_i (core->config, "scr.color", 0);
+	r_cons_push ();
+	r_core_visual_graph (core, NULL, NULL, false);
+	r_config_set_i (core->config, "scr.color", c);
+	char *s = strdup (r_cons_singleton()->context->buffer);
+	r_cons_pop ();
+	cmd_agfb2 (core, s);
+	free (s);
+}
+
+R_API void cmd_agfb3(RCore *core, const char *s, int x, int y) {
+	int h, w = r_str_size (s, &h);
+	RConsPixel *p = r_cons_pixel_new (w, h);
+	r_cons_pixel_sets (p, 0, 0, s);
+	r_cons_pixel_flush (p, x, y);
+}
+
+R_API void cmd_agfb2(RCore *core, const char *s) {
+	int h, w = r_str_size (s, &h);
+	RConsPixel *p = r_cons_pixel_new (w, h);
+	r_cons_pixel_sets (p, 0, 0, s);
+	char *pix = r_cons_pixel_drain (p);
+	r_cons_printf ("%s %c", pix, 10);
+	free (pix);
+}
+
 static void cmd_anal_graph(RCore *core, const char *input) {
 	core->graph->show_node_titles = r_config_get_i (core->config, "graph.ntitles");
 	r_cons_enable_highlight (false);
@@ -8903,6 +8931,9 @@ static void cmd_anal_graph(RCore *core, const char *input) {
 		switch (input[1]) {
 		case 0: // "agf"
 			r_core_visual_graph (core, NULL, NULL, false);
+			break;
+		case 'b': // "agfb" // braile
+			cmd_agfb (core);
 			break;
 		case ' ': { // "agf "
 			RAnalFunction *fcn = r_anal_get_fcn_in (core->anal, core->offset, 0);
@@ -10862,7 +10893,7 @@ static int cmd_anal(void *data, const char *input) {
 		break;
 	case 'n': // 'an'
 		{
-		const char *name = NULL;
+		const char *name = "";
 		bool use_json = false;
 
 		if (input[1] == 'j') {
@@ -10879,11 +10910,10 @@ static int cmd_anal(void *data, const char *input) {
 			if (end) {
 				*end = '\0';
 			}
-			if (*name == '\0') {
-				name = NULL;
-			}
 		}
-
+		if (R_STR_ISEMPTY (name)) {
+			name = NULL;
+		}
 		cmd_an (core, use_json, name);
 		}
 		break;
