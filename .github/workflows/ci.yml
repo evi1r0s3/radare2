@@ -10,6 +10,23 @@ on:
 
 
 jobs:
+  build-acr-gperf:
+    name: linux-acr-gperf
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install meson ninja r2pipe wget
+        sudo apt install gperf
+    - name: Installing with symlinks
+      run: |
+        export CFLAGS="-O2 -Werror -Wno-unused-result -Wno-stringop-truncation"
+        sys/install.sh
+    - name: Running tests
+      run: r2r test/db/cmd
   build-resymlink:
     name: linux-acr-resymlink
     runs-on: ubuntu-20.04
@@ -24,6 +41,41 @@ jobs:
       run: sudo make uninstall
     - name: Reinstalling without symlinks
       run: sudo make install
+  build-rpath-linux:
+    if: contains(github.ref, 'master') || contains(github.ref, 'ci-')
+    name: linux-rpath
+    continue-on-error: true
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: build and run
+      run: |
+        # test and build rpath installation
+        export CFLAGS=-O0
+        ./configure --prefix=/tmp --with-rpath
+        make -j
+        make install
+        ldd /tmp/bin/r2
+        /tmp/bin/r2 -v
+        /tmp/bin/rabin2 -l /tmp/bin/r2
+  build-rpath-macos:
+    if: contains(github.ref, 'master') || contains(github.ref, 'ci-')
+    name: macos-rpath
+    continue-on-error: true
+    runs-on: macos-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: build and run
+      run: |
+        # test and build rpath installation
+        export CFLAGS=-O0
+        ./configure --prefix=/tmp --with-rpath
+        make -j
+        make install
+        /tmp/bin/r2 -v
+        /tmp/bin/rabin2 -l /tmp/bin/r2
   build-spaces:
     name: linux-meson-spaces
     continue-on-error: true
@@ -49,7 +101,7 @@ jobs:
     - name: Build on a directory with spaces (meson only)
       run: |
         export PATH=${HOME}/.local/bin:${HOME}/Library/Python/3.9/bin:${PATH}
-        sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract
+        sudo apt-get --assume-yes install python3-wheel gperf python3-setuptools cabextract gperf
         sudo pip3 install meson==0.55.3 ninja==1.10.0
         git config --global pull.rebase false
         git clone --depth 1 . "spa ces"
@@ -144,14 +196,18 @@ jobs:
         path: radare2-win-installer\Output\radare2.exe
   # LINUX
   linux-static:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+    - name: Installing the musl runtime
+      run: |
+        sudo apt install musl-tools
     - name: Building static r2 with acr
       run: |
         cp -f dist/plugins-cfg/plugins.static.nogpl.cfg plugins.cfg
         NOLTO=1 sys/static.sh
+        # NOLTO=1 sys/static.sh
         make -C binr/blob
         tar cJvf r2-static.tar.xz r2-static
     - name: Pub
@@ -161,12 +217,12 @@ jobs:
         path: r2-static.tar.xz
     - name: Static static r2 with meson 
       run: |
-        sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract
+        sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract gperf
         sudo pip3 install meson==0.55.3 ninja==1.10.0
         CFLAGS="-static" LDFLAGS="-static" meson --prefix=${HOME}/.local --buildtype release --default-library static build
         ninja -C build && ninja -C build install
   linux-acr-deb-64:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -178,13 +234,13 @@ jobs:
         name: radare2_debian_amd64.zip
         path: dist/debian/*/*.deb
   linux-acr-deb-32:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Packaging for 32bit Debian
       run: |
-        sudo apt install gcc-multilib
+        sudo apt install gcc-multilib gperf
         export CFLAGS=-m32
         export LDFLAGS=-m32
         export ARCH=i386
@@ -196,7 +252,7 @@ jobs:
         path: dist/debian/*/*.deb
 ## RPM PACKAGES DISABLED
 #  linux-meson-rpm:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu:18.04
 #    container: centos:8
 #    steps:
 #    - name: Checkout
@@ -213,7 +269,7 @@ jobs:
 #      with:
 #        path: RPMS/*/*.rpm *.rpm dist/rpm/*.rpm
 #  centos-meson-rpm:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu:18.04
 #    container: centos:8
 #    steps:
 #    - name: Checkout
@@ -241,7 +297,7 @@ jobs:
 #      with:
 #        path: rpmbuild/RPMS/*/*.rpm
   linux-asan-fuzz:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     continue-on-error: true
     if: contains(github.ref, 'master') || contains(github.ref, 'ci-')
     steps:
@@ -252,7 +308,7 @@ jobs:
         pip install r2pipe
         sys/sanitize.sh
     - name: Installing tools for the testsuite
-      run: sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract
+      run: sudo apt-get --assume-yes install python3-wheel python3-setuptools cabextract gperf
     - name: Running tests
       run: |
         export ASAN_OPTIONS=detect_leaks=0
@@ -267,7 +323,7 @@ jobs:
         export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.5
         make -C test fuzz-tests
   linux-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 #    if: contains(github.ref, 'ci-')
     steps:
     - name: Checkout
@@ -290,13 +346,10 @@ jobs:
       uses: actions/checkout@v2
     - name: Packaging
       run: dist/macos/build-pkg.sh
-    - name: Building Radare2
-      run: |
-        # treesitter doesnt build with this because of treesitter
-        export CFLAGS="-O2 -Werror -Wno-unused-result -std=gnu89 -Wno-unicode"
-        export CFLAGS="-O2 -Werror -Wno-unused-result -Wno-unicode -Wno-unneeded-internal-declaration"
-        export CFLAGS="-O2"
-        sys/install.sh && make -C dist/macos
+#    - name: Building Radare2
+#      run: |
+#        export CFLAGS="-O2" # -Werror -Wno-unused-result -Wno-unicode -Wno-unneeded-internal-declaration"
+#        sys/install.sh && make -C dist/macos
     - name: Pub
       uses: actions/upload-artifact@v2
       with:
@@ -352,7 +405,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get --assume-yes install pax wget cabextract unzip python3-wheel python3-setuptools python3-pip && pip3 install --user meson ninja
+      run: sudo apt-get --assume-yes install pax wget gperf cabextract unzip python3-wheel python3-setuptools python3-pip && pip3 install --user meson ninja
     - name: Compile with acr
       run: |
         sys/android-ndk-install.sh

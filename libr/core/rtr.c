@@ -1,4 +1,4 @@
-/* radare - Copyright 2009-2020 - pancake, nibble */
+/* radare - Copyright 2009-2021 - pancake, nibble */
 
 #include "r_core.h"
 #include "r_socket.h"
@@ -564,7 +564,7 @@ static int r_core_rtr_gdb_run(RCore *core, int launch, const char *path) {
 		return -1;
 	}
 	if (!(p = atoi (path)) || p < 0 || p > 65535) {
-		eprintf ("gdbserver: Invalid port: %s\n", port);
+		eprintf ("gdbserver: Invalid port: %d\n", p);
 		return -1;
 	}
 	snprintf (port, sizeof (port) - 1, "%d", p);
@@ -797,6 +797,7 @@ R_API void r_core_rtr_add(RCore *core, const char *_input) {
 			char *str = r_socket_http_get (uri, NULL, &len);
 			if (!str) {
 				eprintf ("Cannot find peer\n");
+				r_socket_free (fd);
 				return;
 			}
 			core->num->value = 0;
@@ -884,6 +885,55 @@ R_API void r_core_rtr_remove(RCore *core, const char *input) {
 		}
 		memset (rtr_host, '\0', RTR_MAX_HOSTS * sizeof (RCoreRtrHost));
 		rtr_n = 0;
+	}
+}
+
+static char *errmsg_tmpfile = NULL;
+static int errmsg_fd = -1;
+
+R_API void r_core_rtr_event(RCore *core, const char *input) {
+	if (*input == '-') {
+		input++;
+		if (!strcmp (input, "errmsg")) {
+			if (errmsg_tmpfile) {
+				r_file_rm (errmsg_tmpfile);
+				errmsg_tmpfile = NULL;
+				if (errmsg_fd != -1) {
+					close (errmsg_fd);
+				}
+			}
+		}
+		return;
+	}
+	if (!strcmp (input, "errmsg")) {
+		// TODO: support udp, tcp, rap, ...
+#if __UNIX__
+		char *f = r_file_temp ("errmsg");
+		r_cons_printf ("%s\n", f);
+		r_file_rm (f);
+		errmsg_tmpfile = strdup (f);
+		int e = mkfifo (f, 0644);
+		if (e == -1) {
+			perror ("mkfifo");
+		} else {
+			int ff = open (f, O_RDWR);
+			if (ff != -1) {
+				dup2 (ff, 2);
+				errmsg_fd = ff;
+			} else {
+				eprintf ("Cannot open fifo: %s\n", f);
+			}
+		}
+		// r_core_event (core, );
+		free (s);
+		free (f);
+		// TODO: those files are leaked when closing r_core_free() should be deleted
+#else
+		eprintf ("Not supported for your platform.\n");
+#endif
+	} else {
+		eprintf ("(%s)\n", input);
+		eprintf ("Event types: errmsg, stdin, stdout, stderr, #fdn\n");
 	}
 }
 

@@ -1,4 +1,4 @@
-/* radare - LGPL3 - Copyright 2016-2020 - Matthieu (c0riolis) Tardy - l0stb1t*/
+/* radare - LGPL3 - Copyright 2016-2021 - Matthieu (c0riolis) Tardy - l0stb1t*/
 
 #include <r_io.h>
 #include <r_bin.h>
@@ -88,9 +88,7 @@ static ut8 *get_bytes(RBuffer *buffer, ut32 size) {
 }
 
 static pyc_object *get_none_object(void) {
-	pyc_object *ret;
-
-	ret = R_NEW0 (pyc_object);
+	pyc_object *ret = R_NEW0 (pyc_object);
 	if (!ret) {
 		return NULL;
 	}
@@ -603,9 +601,9 @@ static pyc_object *get_dict_object(RBuffer *buffer) {
 			break;
 		}
 		if (!r_list_append (ret->data, val)) {
+			free_object (val);
 			r_list_free (ret->data);
 			R_FREE (ret);
-			free_object (val);
 			return NULL;
 		}
 	}
@@ -718,6 +716,9 @@ static void free_object(pyc_object *object) {
 	if (!object) {
 		return;
 	}
+	if ((int)object->type == 0) {
+		return;
+	}
 	switch (object->type) {
 	case TYPE_SMALL_TUPLE:
 	case TYPE_TUPLE:
@@ -785,6 +786,9 @@ static pyc_object *copy_object(pyc_object *object) {
 		return NULL;
 	}
 	copy->type = object->type;
+	if ((int)object->type == 0) {
+		// do nothing
+	} else 
 	switch (object->type) {
 	case TYPE_NULL:
 		break;
@@ -1121,6 +1125,9 @@ static pyc_object *get_object(RBuffer *buffer) {
 		eprintf ("Get not implemented for type 0x%x\n", type);
 		free_object (ret);
 		return NULL;
+	case 0:
+		// nop
+		break;
 	default:
 		eprintf ("Undefined type in get_object (0x%x)\n", type);
 		free_object (ret);
@@ -1128,7 +1135,9 @@ static pyc_object *get_object(RBuffer *buffer) {
 	}
 
 	if (flag && ref_idx) {
-		free_object (ref_idx->data);
+		if (ref_idx->data != ret) {
+			free_object (ref_idx->data);
+		}
 		ref_idx->data = copy_object (ret);
 	}
 	return ret;
@@ -1181,18 +1190,22 @@ static bool extract_sections_symbols(pyc_object *obj, RList *sections, RList *sy
 	symbol->paddr = cobj->start_offset;
 	symbol->ordinal = symbols_ordinal++;
 	if (cobj->consts->type != TYPE_TUPLE && cobj->consts->type != TYPE_SMALL_TUPLE) {
-		goto fail;
+		goto fail2;
 	}
 	if (!r_list_append (symbols, symbol)) {
-		goto fail;
+		goto fail2;
 	}
-	r_list_foreach (((RList *)(cobj->consts->data)), i, obj)
+	r_list_foreach (((RList *)(cobj->consts->data)), i, obj) {
 		extract_sections_symbols (obj, sections, symbols, cobjs, prefix);
+	}
 	free (prefix);
 	return true;
 fail:
-
 	free (section);
+	free (prefix);
+	free (symbol);
+	return false;
+fail2:
 	free (prefix);
 	free (symbol);
 	return false;
@@ -1201,11 +1214,12 @@ fail:
 bool get_sections_symbols_from_code_objects(RBuffer *buffer, RList *sections, RList *symbols, RList *cobjs, ut32 magic) {
 	bool ret;
 	magic_int = magic;
-	refs = r_list_newf ((RListFree)free_object);
+	refs = r_list_newf (NULL); // (RListFree)free_object);
 	if (!refs) {
 		return false;
 	}
 	ret = extract_sections_symbols (get_object (buffer), sections, symbols, cobjs, NULL);
 	r_list_free (refs);
+	refs = NULL;
 	return ret;
 }

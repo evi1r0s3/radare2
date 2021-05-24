@@ -405,6 +405,10 @@ typedef struct r_cons_context_t {
 	int color_mode;
 	RConsPalette cpal;
 	RConsPrintablePalette pal;
+
+	RList *sorted_lines;
+	RList *unsorted_lines;
+	int sorted_column; // -1
 } RConsContext;
 
 #define HUD_BUF_SIZE 512
@@ -430,6 +434,7 @@ typedef struct r_cons_t {
 	int fix_columns;
 	bool break_lines;
 	int noflush;
+	int optimize;
 	bool show_autocomplete_widget;
 	FILE *fdin; // FILE? and then int ??
 	int fdout; // only used in pipe.c :?? remove?
@@ -860,7 +865,7 @@ R_API void r_cons_println(const char* str);
 
 R_API void r_cons_strcat_justify(const char *str, int j, char c);
 R_API void r_cons_printat(const char *str, int x, char y);
-R_API int r_cons_memcat(const char *str, int len);
+R_API int r_cons_write(const char *str, int len);
 R_API void r_cons_newline(void);
 R_API void r_cons_filter(void);
 R_API void r_cons_flush(void);

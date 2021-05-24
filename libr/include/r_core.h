@@ -227,7 +227,7 @@ typedef struct {
 	char *cmd;
 } RCoreGadget;
 
-R_API void r_core_gadget_free (RCoreGadget *g);
+R_API void r_core_gadget_free(RCoreGadget *g);
 
 typedef struct r_core_tasks_t {
 	int task_id_next;
@@ -347,7 +347,6 @@ struct r_core_t {
 	bool scr_gadgets;
 	bool log_events; // core.c:cb_event_handler : log actions from events if cfg.log.events is set
 	RList *ropchain;
-	bool use_tree_sitter_r2cmd;
 	char *theme;
 	bool marks_init;
 	ut64 marks[UT8_MAX + 1];
@@ -434,6 +433,7 @@ R_API char *r_core_cmd_str_pipe(RCore *core, const char *cmd);
 R_API int r_core_cmd_file(RCore *core, const char *file);
 R_API int r_core_cmd_lines(RCore *core, const char *lines);
 R_API int r_core_cmd_command(RCore *core, const char *command);
+R_API void r_core_af(RCore *core, ut64 addr, const char *name, bool anal_calls);
 R_API bool r_core_run_script (RCore *core, const char *file);
 R_API bool r_core_seek(RCore *core, ut64 addr, bool rb);
 R_API bool r_core_visual_bit_editor(RCore *core);
@@ -587,7 +587,7 @@ R_API int r_core_get_stacksz(RCore *core, ut64 from, ut64 to);
 /* anal.c */
 R_API RAnalOp* r_core_anal_op(RCore *core, ut64 addr, int mask);
 R_API void r_core_anal_esil(RCore *core, const char *str, const char *addr);
-R_API void r_core_anal_fcn_merge (RCore *core, ut64 addr, ut64 addr2);
+R_API void r_core_anal_fcn_merge(RCore *core, ut64 addr, ut64 addr2);
 R_API const char *r_core_anal_optype_colorfor(RCore *core, ut64 addr, bool verbose);
 R_API ut64 r_core_anal_address (RCore *core, ut64 addr);
 R_API void r_core_anal_undefine(RCore *core, ut64 off);
@@ -608,7 +608,7 @@ R_API int r_core_esil_step(RCore *core, ut64 until_addr, const char *until_expr,
 R_API int r_core_esil_step_back(RCore *core);
 R_API ut64 r_core_anal_get_bbaddr(RCore *core, ut64 addr);
 R_API bool r_core_anal_bb_seek(RCore *core, ut64 addr);
-R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth);
+R_API bool r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth);
 R_API char *r_core_anal_fcn_autoname(RCore *core, ut64 addr, int dump, int mode);
 R_API void r_core_anal_autoname_all_fcns(RCore *core);
 R_API void r_core_anal_autoname_all_golang_fcns(RCore *core);
@@ -770,6 +770,7 @@ R_API void r_core_rtr_list(RCore *core);
 R_API void r_core_rtr_add(RCore *core, const char *input);
 R_API void r_core_rtr_remove(RCore *core, const char *input);
 R_API void r_core_rtr_session(RCore *core, const char *input);
+R_API void r_core_rtr_event(RCore *core, const char *input);
 R_API void r_core_rtr_cmd(RCore *core, const char *input);
 R_API int r_core_rtr_http(RCore *core, int launch, int browse, const char *path);
 R_API int r_core_rtr_http_stop(RCore *u);
@@ -947,6 +948,7 @@ R_API void r_core_anal_propagate_noreturn(RCore *core, ut64 addr);
 /* PLUGINS */
 extern RCorePlugin r_core_plugin_java;
 extern RCorePlugin r_core_plugin_a2f;
+extern RCorePlugin r_core_plugin_sixref;
 R_API bool r_core_plugin_init(RCmd *cmd);
 R_API bool r_core_plugin_add(RCmd *cmd, RCorePlugin *plugin);
 R_API bool r_core_plugin_check(RCmd *cmd, const char *a0);

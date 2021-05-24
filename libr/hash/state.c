@@ -1,11 +1,30 @@
 /* radare - LGPL - Copyright 2009-2017 pancake */
 
 #include <r_hash.h>
+#include <r_util.h>
 
 #if HAVE_LIB_SSL
 #include <openssl/md4.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
+
+#  define r_SHA256_BLOCK_LENGTH SHA256_BLOCK_LENGTH
+
+#  define r_SHA1_Init           SHA1_Init
+#  define r_SHA1_Update         SHA1_Update
+#  define r_SHA1_Final          SHA1_Final
+
+#  define r_SHA256_Init         SHA256_Init
+#  define r_SHA256_Update       SHA256_Update
+#  define r_SHA256_Final        SHA256_Final
+
+#  define r_SHA384_Init         SHA384_Init
+#  define r_SHA384_Update       SHA384_Update
+#  define r_SHA384_Final        SHA384_Final
+
+#  define r_SHA512_Init         SHA512_Init
+#  define r_SHA512_Update       SHA512_Update
+#  define r_SHA512_Final        SHA512_Final
 #else
 #include "md4.h"
 #include "md5.h"
@@ -52,7 +71,7 @@ R_API ut8 *r_hash_do_ssdeep(RHash *ctx, const ut8 *input, int len) {
 	}
 	char *res = r_hash_ssdeep (input, len);
 	if (res) {
-		strncpy ((char *)ctx->digest, res, R_HASH_SIZE_SSDEEP);
+		r_str_ncpy ((char *)ctx->digest, res, R_HASH_SIZE_SSDEEP);
 		free (res);
 	}
 	return ctx->digest;

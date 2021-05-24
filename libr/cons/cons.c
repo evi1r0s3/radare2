@@ -1,4 +1,4 @@
-/* radare2 - LGPL - Copyright 2008-2020 - pancake, Jody Frankowski */
+/* radare2 - LGPL - Copyright 2008-2021 - pancake, Jody Frankowski */
 
 #include <r_cons.h>
 #include <r_util.h>
@@ -211,6 +211,7 @@ R_API void r_cons_color(int fg, int r, int g, int b) {
 }
 
 R_API void r_cons_println(const char* str) {
+	// this is not thread safe!
 	r_cons_print (str);
 	r_cons_newline ();
 }
@@ -223,7 +224,7 @@ R_API void r_cons_printat(const char *str, int x, char y) {
 		if (str[i] == '\n') {
 			r_cons_gotoxy (x, y + lines);
 			int wlen = R_MIN (len, w);
-			r_cons_memcat (str + o, wlen);
+			r_cons_write (str + o, wlen);
 			o = i + 1;
 			len = 0;
 			lines++;
@@ -231,7 +232,7 @@ R_API void r_cons_printat(const char *str, int x, char y) {
 	}
 	if (len > 0) {
 		r_cons_gotoxy (x, y + lines);
-		r_cons_memcat (str + o, len);
+		r_cons_write (str + o, len);
 	}
 }
 
@@ -244,7 +245,7 @@ R_API void r_cons_strcat_justify(const char *str, int j, char c) {
 				r_cons_memset (c, 1);
 				r_cons_memset (' ', 1);
 			}
-			r_cons_memcat (str + o, len);
+			r_cons_write (str + o, len);
 			if (str[o + len] == '\n') {
 				r_cons_newline ();
 			}
@@ -253,7 +254,7 @@ R_API void r_cons_strcat_justify(const char *str, int j, char c) {
 		}
 	}
 	if (len > 1) {
-		r_cons_memcat (str + o, len);
+		r_cons_write (str + o, len);
 	}
 }
 
@@ -282,7 +283,7 @@ R_API void r_cons_strcat_at(const char *_str, int x, char y, int w, int h) {
 			cols = R_MIN (w, ansilen);
 			const char *end = r_str_ansi_chrn (str + o, cols);
 			cols = end - str + o;
-			r_cons_memcat (str + o, R_MIN (len, cols));
+			r_cons_write (str + o, R_MIN (len, cols));
 			o = i + 1;
 			len = 0;
 			rows++;
@@ -290,7 +291,7 @@ R_API void r_cons_strcat_at(const char *_str, int x, char y, int w, int h) {
 	}
 	if (len > 1) {
 		r_cons_gotoxy (x, y + rows);
-		r_cons_memcat (str + o, len);
+		r_cons_write (str + o, len);
 	}
 	r_cons_strcat (Color_RESET);
 	r_cons_strcat (R_CONS_CURSOR_RESTORE);
@@ -854,6 +855,7 @@ R_API void r_cons_context_load(RConsContext *context) {
 
 R_API void r_cons_context_reset(void) {
 	I.context = &r_cons_context_default;
+	I.context->sorted_column = -1;
 }
 
 R_API bool r_cons_context_is_main(void) {
@@ -875,7 +877,7 @@ R_API void r_cons_last(void) {
 		return;
 	}
 	CTX (lastMode) = true;
-	r_cons_memcat (CTX (lastOutput), CTX (lastLength));
+	r_cons_write (CTX (lastOutput), CTX (lastLength));
 }
 
 static bool lastMatters(void) {
@@ -913,6 +915,53 @@ R_API void r_cons_eflush(void) {
 	}
 }
 
+// TODO: must be called twice to remove all unnecessary reset codes. maybe adding the last two words would be faster
+// TODO remove all the strdup
+// TODO remove the slow memmove
+static void optimize(void) {
+	char *buf = CTX (buffer);
+	int len = CTX (buffer_len);
+	int i, codes = 0;
+	int escape_n = 0;
+	char escape[32];
+	bool onescape = false;
+	char *oldstr = NULL;
+	for (i = 0; i < len; i++) {
+		if (onescape) {
+			escape[escape_n++] = buf[i];
+			escape[escape_n] = 0;
+			if (buf[i] == 'm' || buf[i] == 'K' || buf[i] == 'L') {
+				int pos = (i - escape_n);
+			// 	eprintf ("JJJ(%s) (%s)%c", escape + 1, oldstr?oldstr+1:"", 10);
+				if (oldstr && !strcmp (escape, oldstr)) {
+					// trim str
+					memmove (buf + pos + 1, buf + i + 1, len - i + 1);
+					i -= escape_n - 1;
+					len -= escape_n;
+				}
+				free (oldstr);
+				oldstr = strdup (escape);
+			//	eprintf ("ERN (%d) %s%c", pos, escape, 10);
+				onescape = false;
+			} else {
+				if (escape_n + 1 >= sizeof(escape)) {
+					escape_n = 0;
+					onescape = false;
+				}
+			}
+		} else if (buf[i] == 0x1b) {
+			escape_n = 0;
+			onescape = true;
+			escape[escape_n++] = buf[i];
+			escape[escape_n] = 0;
+			codes++;
+		}
+	}
+	// eprintf ("FROM %d TO %d (%d)%c", I.context->buffer_len, len, codes, 10);
+	I.context->buffer_len = len;
+	free (oldstr);
+}
+
 R_API void r_cons_flush(void) {
 	const char *tee = I.teefile;
 	if (I.noflush) {
@@ -936,6 +985,13 @@ R_API void r_cons_flush(void) {
 	} else {
 		CTX (lastMode) = false;
 	}
+	if (I.optimize) {
+		// compress output (45 / 250 KB)
+		optimize ();
+		if (I.optimize > 1) {
+			optimize ();
+		}
+	}
 	r_cons_filter ();
 	if (r_cons_is_interactive () && I.fdout == 1) {
 		/* Use a pager if the output doesn't fit on the terminal window. */
@@ -949,7 +1005,7 @@ R_API void r_cons_flush(void) {
 				free (str);
 				return;
 			} else {
-				r_sys_cmd_str_full (I.pager, CTX (buffer), NULL, NULL, NULL);
+				r_sys_cmd_str_full (I.pager, CTX (buffer), -1, NULL, NULL, NULL);
 				r_cons_reset ();
 			}
 		} else if (I.context->buffer_len > CONS_MAX_USER) {
@@ -1267,9 +1323,10 @@ R_API int r_cons_get_column(void) {
 }
 
 /* final entrypoint for adding stuff in the buffer screen */
-R_API int r_cons_memcat(const char *str, int len) {
-	if (R_STR_ISEMPTY (str) || len < 0) {
-		return -1;
+R_API int r_cons_write(const char *str, int len) {
+	r_return_val_if_fail (str && len >= 0, -1);
+	if (len == 0) {
+		return 0;
 	}
 	if (I.echo) {
 		// Here to silent pedantic meson flags ...
@@ -1313,7 +1370,7 @@ R_API void r_cons_strcat(const char *str) {
 	}
 	len = strlen (str);
 	if (len > 0) {
-		r_cons_memcat (str, len);
+		r_cons_write (str, len);
 	}
 }
 

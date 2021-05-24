@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2019 - pancake */
+/* radare - LGPL - Copyright 2009-2021 - pancake */
 
 #include <r_types.h>
 #include <r_util.h>
@@ -367,17 +367,19 @@ static RBinImport *import_from_name(RBin *rbin, const char *orig_name, HtPP *imp
 static RList *imports(RBinFile *bf) {
 	RBinObject *obj = bf ? bf->o : NULL;
 	struct MACH0_(obj_t) *bin = bf ? bf->o->bin_obj : NULL;
-	struct import_t *imports = NULL;
 	const char *name;
 	RBinImport *ptr = NULL;
-	RList *ret = NULL;
 	int i;
 
-	if (!obj || !bin || !obj->bin_obj || !(ret = r_list_newf (free))) {
+	if (!obj || !bin || !obj->bin_obj) {
 		return NULL;
 	}
-	if (!(imports = MACH0_(get_imports) (bf->o->bin_obj))) {
-		return ret;
+	RList *ret = r_list_newf((RListFree)r_bin_import_free);
+	struct import_t *imports = MACH0_(get_imports)(bf->o->bin_obj);
+	if (!ret || !imports) {
+		r_list_free (ret);
+		free (imports);
+		return NULL;
 	}
 	bin->has_canary = false;
 	bin->has_retguard = -1;
@@ -440,6 +442,7 @@ static RList *relocs(RBinFile *bf) {
 		if (reloc->name[0]) {
 			RBinImport *imp;
 			if (!(imp = import_from_name (bf->rbin, (char*) reloc->name, bin->imports_by_name))) {
+				free (ptr);
 				break;
 			}
 			ptr->import = imp;
@@ -768,7 +771,10 @@ static void rebase_buffer(struct MACH0_(obj_t) *obj, ut64 off, RIODesc *fd, ut8 
 		if (!obj->chained_starts[i]) {
 			continue;
 		}
-		ut64 page_size = obj->chained_starts[i]->page_size;
+		int page_size = obj->chained_starts[i]->page_size;
+		if (page_size < 1) {
+			page_size = 4096;
+		}
 		ut64 start = obj->segs[i].fileoff;
 		ut64 end = start + obj->segs[i].filesize;
 		if (end >= off && start <= eob) {

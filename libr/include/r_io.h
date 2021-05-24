@@ -49,9 +49,12 @@ typedef void * r_ptrace_data_t;
 typedef int r_ptrace_request_t;
 typedef void * r_ptrace_data_t;
 #define R_PTRACE_NODATA NULL
-#else
+#elif __APPLE__
 typedef int r_ptrace_request_t;
 typedef int r_ptrace_data_t;
+#else
+typedef int r_ptrace_request_t;
+typedef void *r_ptrace_data_t;
 #define R_PTRACE_NODATA 0
 #endif
 #endif
@@ -115,18 +118,20 @@ typedef struct r_io_t {
 	ut64 mask;
 	RIOUndo undo;
 	SdbList *plugins;
+	bool nodup;
 	char *runprofile;
 	char *envprofile;
-#if USE_PTRACE_WRAP
-	struct ptrace_wrap_instance_t *ptrace_wrap;
-#endif
-#if __WINDOWS__
-	struct w32dbg_wrap_instance_t *w32dbg_wrap;
-#endif
 	char *args;
 	REvent *event;
 	PrintfCallback cb_printf;
 	RCoreBind corebind;
+	bool want_ptrace_wrap;
+#if __WINDOWS__
+	struct w32dbg_wrap_instance_t *w32dbg_wrap;
+#endif
+#if USE_PTRACE_WRAP
+	struct ptrace_wrap_instance_t *ptrace_wrap;
+#endif
 } RIO;
 
 typedef struct r_io_desc_t {
@@ -507,7 +512,7 @@ extern RIOPlugin r_io_plugin_r2pipe;
 extern RIOPlugin r_io_plugin_r2web;
 extern RIOPlugin r_io_plugin_qnx;
 extern RIOPlugin r_io_plugin_r2k;
-extern RIOPlugin r_io_plugin_tcp;
+extern RIOPlugin r_io_plugin_tcpslurp;
 extern RIOPlugin r_io_plugin_bochs;
 extern RIOPlugin r_io_plugin_null;
 extern RIOPlugin r_io_plugin_ar;

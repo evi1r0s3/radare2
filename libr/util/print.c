@@ -815,6 +815,7 @@ R_API void r_print_section(RPrint *p, ut64 at) {
 }
 
 R_API void r_print_hexdump(RPrint *p, ut64 addr, const ut8 *buf, int len, int base, int step, size_t zoomsz) {
+	r_return_if_fail (p && buf && len > 0);
 	PrintfCallback printfmt = (PrintfCallback)printf;
 #define print(x) printfmt("%s", x)
 	bool c = p? (p->flags & R_PRINT_FLAGS_COLOR): false;
@@ -1265,6 +1266,14 @@ R_API void r_print_hexdump(RPrint *p, ut64 addr, const ut8 *buf, int len, int ba
 					}
 					ut8 ch = (use_unalloc && p && !p->iob.is_valid_offset (p->iob.io, addr + j, false))
 						? ' ' : buf[j];
+					if (p->charset && p->charset->loaded) {
+						ut8 input[2] = {ch, 0};
+						ut8 output[32];
+						size_t len = r_charset_encode_str (p->charset, output, sizeof (output), input, 1);
+						if (len > 0) {
+							ch = *output;
+						}
+					}
 					r_print_byte (p, "%c", j, ch);
 					bytes++;
 				}
@@ -1484,7 +1493,12 @@ R_API void r_print_bytes(RPrint *p, const ut8 *buf, int len, const char *fmt) {
 }
 
 R_API void r_print_raw(RPrint *p, ut64 addr, const ut8 *buf, int len, int offlines) {
-	if (offlines == 2) {
+	switch (offlines) {
+	case 0:
+		p->write (buf, len);
+		break;
+	case 2:
+	{
 		int i, j, cols = p->cols * 4;
 		char ch;
 		for (i = 0; i < len; i += cols) {
@@ -1504,10 +1518,14 @@ R_API void r_print_raw(RPrint *p, ut64 addr, const ut8 *buf, int len, int offlin
 			}
 			p->cb_printf ("\n");
 		}
-	} else if (offlines) {
+		break;
+	}
+	default:
+	{
 		const ut8 *o, *q;
 		ut64 off;
-		int i, linenum_abs, mustbreak = 0, linenum = 1;
+		bool mustbreak;
+		int i, linenum_abs, linenum = 1;
 		o = q = buf;
 		i = 0;
 		do {
@@ -1532,8 +1550,8 @@ R_API void r_print_raw(RPrint *p, ut64 addr, const ut8 *buf, int len, int offlin
 			o = ++q;
 			i++;
 		} while (!mustbreak);
-	} else {
-		p->write (buf, len);
+		break;
+	}
 	}
 }
 

@@ -39,6 +39,7 @@ typedef enum {
 	R_REG_NAME_SR, // status register
 	R_REG_NAME_BP, // base pointer
 	R_REG_NAME_LR, // link register
+	R_REG_NAME_RS, // default register size
 	/* args */
 	R_REG_NAME_A0, // arguments
 	R_REG_NAME_A1,
@@ -125,6 +126,7 @@ typedef struct r_reg_t {
 	int arch;
 	int bits;
 	int size;
+	int bits_default;
 	bool is_thumb;
 	bool big_endian;
 } RReg;
@@ -177,7 +179,7 @@ R_API int r_reg_get_name_idx(const char *type);
 R_API RRegItem *r_reg_cond_get(RReg *reg, const char *name);
 R_API void r_reg_cond_apply(RReg *r, RRegFlags *f);
 R_API bool r_reg_cond_set(RReg *reg, const char *name, bool val);
-R_API int r_reg_cond_get_value(RReg *r, const char *name);
+R_API bool r_reg_cond_get_value(RReg *r, const char *name);
 R_API bool r_reg_cond_bits_set(RReg *r, int type, RRegFlags *f, bool v);
 R_API int r_reg_cond_bits(RReg *r, int type, RRegFlags *f);
 R_API RRegFlags *r_reg_cond_retrieve(RReg *r, RRegFlags *);
@@ -211,6 +213,7 @@ R_API int r_reg_set_pack(RReg *reg, RRegItem *item, int packidx, int packbits, u
 R_API ut64 r_reg_get_pack(RReg *reg, RRegItem *item, int packidx, int packbits);
 
 /* byte arena */
+R_API int r_reg_default_bits(RReg *reg);
 R_API ut8 *r_reg_get_bytes(RReg *reg, int type, int *size);
 R_API bool r_reg_set_bytes(RReg *reg, int type, const ut8 *buf, const int len);
 R_API bool r_reg_read_regs(RReg *reg, ut8 *buf, const int len);

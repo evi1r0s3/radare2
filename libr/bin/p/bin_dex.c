@@ -1096,7 +1096,7 @@ static void parse_dex_class_fields(RBinFile *bf, RBinDexClass *c, RBinClass *cls
 		sym->ordinal = (*sym_count)++;
 
 		if (dexdump) {
-			const char *accessStr = createAccessFlagStr (
+			char *accessStr = createAccessFlagStr (
 				accessFlags, kAccessForField);
 			bin->cb_printf ("    #%zu              : (in %s;)\n", i,
 					 cls->name);
@@ -1104,6 +1104,7 @@ static void parse_dex_class_fields(RBinFile *bf, RBinDexClass *c, RBinClass *cls
 			bin->cb_printf ("      type          : '%s'\n", type_str);
 			bin->cb_printf ("      access        : 0x%04x (%s)\n",
 					 (ut32)accessFlags, r_str_get (accessStr));
+			free (accessStr);
 		}
 		r_list_append (dex->methods_list, sym);
 
@@ -1224,11 +1225,12 @@ static void parse_dex_class_method(RBinFile *bf, RBinDexClass *c, RBinClass *cls
 			t = 16 + 2 * insns_size + padd;
 		}
 		if (dexdump) {
-			const char* accessStr = createAccessFlagStr (MA, kAccessForMethod);
+			char* accessStr = createAccessFlagStr (MA, kAccessForMethod);
 			cb_printf ("    #%d              : (in %s;)\n", i, cls->name);
 			cb_printf ("      name          : '%s'\n", method_name);
 			cb_printf ("      type          : '%s'\n", signature);
 			cb_printf ("      access        : 0x%04x (%s)\n", (ut32)MA, accessStr);
+			free (accessStr);
 		}
 
 		if (MC > 0) {
@@ -1475,13 +1477,12 @@ static void parse_class(RBinFile *bf, RBinDexClass *c, int class_index, int *met
 		free (cls);
 		goto beach;
 	}
-	const char *str = createAccessFlagStr (c->access_flags, kAccessForClass);
-	cls->visibility_str = strdup (r_str_get (str));
+	cls->visibility_str = createAccessFlagStr (c->access_flags, kAccessForClass);
 	r_list_append (dex->classes_list, cls);
 	if (dexdump) {
 		rbin->cb_printf ("  Class descriptor  : '%s;'\n", cls->name);
 		rbin->cb_printf ("  Access flags      : 0x%04x (%s)\n", c->access_flags,
-			createAccessFlagStr (c->access_flags, kAccessForClass));
+				r_str_get (cls->visibility_str));
 		rbin->cb_printf ("  Superclass        : '%s'\n", cls->super);
 		rbin->cb_printf ("  Interfaces        -\n");
 	}
@@ -1592,6 +1593,7 @@ static bool dex_loadcode(RBinFile *bf) {
 	PrintfCallback cb_printf = bf->rbin->cb_printf;
 	size_t i;
 	int *methods = NULL;
+	size_t methods_size = 0;
 	int sym_count = 0;
 	// doublecheck??
 	if (dex->methods_list) {
@@ -1604,7 +1606,7 @@ static bool dex_loadcode(RBinFile *bf) {
 	if (!dex->methods_list) {
 		return false;
 	}
-	dex->imports_list = r_list_newf ((RListFree)free);
+	dex->imports_list = r_list_newf ((RListFree)r_bin_import_free);
 	if (!dex->imports_list) {
 		r_list_free (dex->methods_list);
 		return false;
@@ -1621,7 +1623,7 @@ static bool dex_loadcode(RBinFile *bf) {
 		return false;
 	}
 
-	if (dex->header.method_size>dex->size) {
+	if (dex->header.method_size > dex->size) {
 		dex->header.method_size = 0;
 		return false;
 	}
@@ -1643,7 +1645,8 @@ static bool dex_loadcode(RBinFile *bf) {
 		if (amount > UT32_MAX || amount < dex->header.method_size) {
 			return false;
 		}
-		methods = calloc (1, amount + 1);
+		methods_size = amount + 1;
+		methods = calloc (1, methods_size);
 		for (i = 0; i < dex->header.class_size; i++) {
 			struct dex_class_t *c = &dex->classes[i];
 			if (dexdump) {
@@ -1655,8 +1658,8 @@ static bool dex_loadcode(RBinFile *bf) {
 	if (methods) {
 		int import_count = 0;
 		int sym_count = dex->methods_list->length;
-
-		for (i = 0; i < dex->header.method_size; i++) {
+		int last = (methods_size / sizeof(int)); // sym_count
+		for (i = 0; i < last; i++) {
 			int len = 0;
 			if (methods[i]) {
 				continue;
@@ -1977,7 +1980,7 @@ static RList *sections(RBinFile *bf) {
 	if (!bin->code_from || !bin->code_to) {
 		fast_code_size (bf);
 	}
-	if (!(ret = r_list_newf (free))) {
+	if (!(ret = r_list_newf ((RListFree)r_bin_section_free))) {
 		return NULL;
 	}
 

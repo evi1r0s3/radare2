@@ -1,4 +1,4 @@
-/* radare - LGPL3 - Copyright 2016-2020 - FXTi */
+/* radare - LGPL3 - Copyright 2016-2021 - FXTi */
 
 #include <r_types.h>
 #include <r_lib.h>
@@ -30,10 +30,18 @@ static char *get_reg_profile(RAnal *anal) {
 		"=BP    bp\n"
 		"=SP    sp\n"
 		"=A0    sp\n"
+		"=RS    32\n"
 		"gpr    sp  .32 0   0\n" // stack pointer
 		"gpr    pc  .32 4   0\n" // program counter
 		"gpr    bp  .32 8   0\n" // base pointer // unused
 	);
+}
+
+static bool set_reg_profile(RAnal *anal) {
+	char *rp = get_reg_profile (anal);
+	bool b = r_reg_set_profile_string (anal->reg, rp);
+	free (rp);
+	return b;
 }
 
 static RList *get_pyc_code_obj(RAnal *anal) {
@@ -138,6 +146,7 @@ RAnalPlugin r_anal_plugin_pyc = {
 	.bits = 16 | 8, // Partially agree with this
 	.archinfo = archinfo,
 	.get_reg_profile = get_reg_profile,
+	.set_reg_profile = &set_reg_profile,
 	.op = &pyc_op,
 	.esil = false,
 	.fini = &finish,

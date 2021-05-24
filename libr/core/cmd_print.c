@@ -75,7 +75,7 @@ static const char *help_msg_p6[] = {
 };
 
 static const char *help_msg_pF[] = {
-	"Usage: pF[apdb]", "[len]", "parse ASN1, PKCS, X509, DER, protobuf",
+	"Usage: pF[apdbA]", "[len]", "parse ASN1, PKCS, X509, DER, protobuf, axml",
 	"pFa", "[len]", "decode ASN1 from current block",
 	"pFaq", "[len]", "decode ASN1 from current block (quiet output)",
 	"pFb", "[len]", "decode raw proto buffers.",
@@ -83,6 +83,8 @@ static const char *help_msg_pF[] = {
 	"pFo", "[len]", "decode ASN1 OID",
 	"pFp", "[len]", "decode PKCS7",
 	"pFx", "[len]", "Same with X509",
+	"pFX", "[len]", "print decompressed xz block",
+	"pFA", "[len]", "decode Android Binary XML from current block",
 	NULL
 };
 
@@ -202,6 +204,8 @@ static const char *help_msg_at_at_at[] = {
 	"x", " @@@c:cmd", "Same as @@@=`cmd`, without the backticks",
 	"x", " @@@C:cmd", "comments matching",
 	"x", " @@@i", "imports",
+	"x", " @@@e", "entries",
+	"x", " @@@E", "exports",
 	"x", " @@@r", "registers",
 	"x", " @@@s", "symbols",
 	"x", " @@@st", "strings",
@@ -388,6 +392,7 @@ static const char *help_detail_pf[] = {
 	" ", "E", "resolve enum name (see t?)",
 	" ", "f", "float value (4 bytes)",
 	" ", "F", "double value (8 bytes)",
+	" ", "G", "long double value (16 bytes (10 with padding))",
 	" ", "i", "signed integer value (4 bytes) (see 'd' and 'x')",
 	" ", "n", "next char specifies size of signed value (1, 2, 4 or 8 byte(s))",
 	" ", "N", "next char specifies size of unsigned value (1, 2, 4 or 8 byte(s))",
@@ -526,6 +531,7 @@ static const char *help_msg_pv[] = {
 static const char *help_msg_px[] = {
 	"Usage:", "px[0afoswqWqQ][f]", " # Print heXadecimal",
 	"px", "", "show hexdump",
+	"px--", "[n]", "context hexdump (the hexdump version of pd--3)",
 	"px/", "", "same as x/ in gdb (help x)",
 	"px0", "", "8bit hexpair list of bytes until zero byte",
 	"pxa", "", "show annotated hexdump",
@@ -1229,6 +1235,16 @@ static void cmd_print_fromage(RCore *core, const char *input, const ut8* data, i
 			}
 		}
 		break;
+	case 'X': // "pFx" x509
+		{
+			size_t out_len = 0;
+			ut8 *out = r_sys_unxz (data, size, &out_len);
+			if (out) {
+				r_cons_write ((const char *)out, out_len);
+				free (out);
+			}
+		}
+		break;
 	case 'x': // "pFx" x509
 		{
 			RX509Certificate* x509 = r_x509_parse_certificate (r_asn1_create_object (data, size, data));
@@ -1267,6 +1283,17 @@ static void cmd_print_fromage(RCore *core, const char *input, const ut8* data, i
 			if (s) {
 				r_cons_printf ("%s", s);
 				free (s);
+			}
+		}
+		break;
+	case 'A': // "pFA"
+		{
+			char *s = r_axml_decode (data, size);
+			if (s) {
+				r_cons_printf ("%s", s);
+				free (s);
+			} else {
+				eprintf ("Malformed object: did you supply enough data?\ntry to change the block size (see b?)\n");
 			}
 		}
 		break;
@@ -2089,6 +2116,9 @@ R_API void r_core_print_examine(RCore *core, const char *str) {
 		cmd[n] = 0;
 		r_core_cmd0 (core, cmd);
 		break;
+	case 'w':
+		size = 4;
+		// fallthru
 	case 'x':
 		switch (size) {
 		default:
@@ -2904,10 +2934,10 @@ static void disasm_strings(RCore *core, const char *input, RAnalFunction *fcn) {
 		line += strlen (line) + 1;
 	}
 	// r_cons_printf ("%s", s);
-	free (string2);
-	free (string);
-	free (s);
-	free (switchcmp);
+	R_FREE (string2);
+	R_FREE (string);
+	R_FREE (s);
+	R_FREE (switchcmp);
 restore_conf:
 	r_config_set_b (core->config, "asm.offset", show_offset);
 	r_config_set_b (core->config, "asm.dwarf", asm_dwarf);
@@ -3338,7 +3368,7 @@ static bool cmd_print_blocks(RCore *core, const char *input) {
 			break;
 		default:{ // p--
 			if (off >= at && off < ate) {
-				r_cons_memcat ("^", 1);
+				r_cons_write ("^", 1);
 			} else {
 				RIOMap *s = r_io_map_get_at (core->io, at);
 				if (use_color) {
@@ -3353,19 +3383,19 @@ static bool cmd_print_blocks(RCore *core, const char *input) {
 					}
 				}
 				if (as->block[p].strings > 0) {
-					r_cons_memcat ("z", 1);
+					r_cons_write ("z", 1);
 				} else if (as->block[p].symbols > 0) {
-					r_cons_memcat ("s", 1);
+					r_cons_write ("s", 1);
 				} else if (as->block[p].functions > 0) {
-					r_cons_memcat ("F", 1);
+					r_cons_write ("F", 1);
 				} else if (as->block[p].comments > 0) {
-					r_cons_memcat ("c", 1);
+					r_cons_write ("c", 1);
 				} else if (as->block[p].flags > 0) {
-					r_cons_memcat (".", 1);
+					r_cons_write (".", 1);
 				} else if (as->block[p].in_functions > 0) {
-					r_cons_memcat ("f", 1);
+					r_cons_write ("f", 1);
 				} else {
-					r_cons_memcat ("_", 1);
+					r_cons_write ("_", 1);
 				}
 			}
 		}
@@ -4818,6 +4848,7 @@ static bool cmd_pi(RCore *core, const char *input, int len, int l, ut8 *block) {
 				// restore saved configuration
 				r_config_hold_restore (hc);
 				r_config_hold_free (hc);
+				R_FREE (refs);
 			}
 			// print json object
 			if (pj) {
@@ -4963,7 +4994,6 @@ static int cmd_print(void *data, const char *input) {
 		r_core_seek (core, off, SEEK_SET);
 		r_core_block_read (core);
 	}
-	// TODO After core->block is removed, this should be changed to a block read.
 	block = core->block;
 	switch (*input) {
 	case 'w': // "pw"
@@ -5137,18 +5167,20 @@ static int cmd_print(void *data, const char *input) {
 		} else if (input[1] == '?') {
 			r_core_cmd_help (core, help_msg_pa);
 		} else {
-			int i;
-			int bytes;
 			r_asm_set_pc (core->rasm, core->offset);
 			RAsmCode *acode = r_asm_massemble (core->rasm, input + 1);
 			if (acode) {
-				bytes = acode->len;
-				for (i = 0; i < bytes; i++) {
-					ut8 b = acode->bytes[i]; // core->print->big_endian? (bytes - 1 - i): i ];
-					r_cons_printf ("%02x", b);
+				if (!acode->len) {
+					eprintf ("Usage: pa [instruction-to-assemble] ; use pd to disassemble\n");
+				} else {
+					size_t i;
+					for (i = 0; i < acode->len; i++) {
+						ut8 b = acode->bytes[i];
+						r_cons_printf ("%02x", b);
+					}
+					r_cons_newline ();
+					r_asm_code_free (acode);
 				}
-				r_cons_newline ();
-				r_asm_code_free (acode);
 			}
 		}
 	}
@@ -5338,9 +5370,15 @@ static int cmd_print(void *data, const char *input) {
 			break;
 		case 'd': // "pdd" // r2dec
 			eprintf ("Error: r2pm -ci r2dec\n");
+			processed_cmd = true;
+			break;
+		case 'z': // "pdz" // retdec
+			eprintf ("Error: r2pm -ci retdec-r2plugin\n");
+			processed_cmd = true;
 			break;
 		case 'g': // "pdg" // r2ghidra
 			eprintf ("Error: r2pm -ci r2ghidra\n");
+			processed_cmd = true;
 			break;
 		case 'c': // "pdc" // "pDc"
 			r_core_pseudo_code (core, input + 2);
@@ -6094,7 +6132,7 @@ static int cmd_print(void *data, const char *input) {
 				ut8 *out;
 				out = r_inflate (block, core->blocksize, NULL, &outlen);
 				if (out) {
-					r_cons_memcat ((const char *) out, outlen);
+					r_cons_write ((const char *) out, outlen);
 				}
 				free (out);
 			}
@@ -6156,22 +6194,32 @@ static int cmd_print(void *data, const char *input) {
 		cmd_print_op(core, input);
 		break;
 	case 'x': // "px"
-	{
-		bool show_offset = r_config_get_i (core->config, "hex.offset");
-		if (show_offset) {
-			core->print->flags |= R_PRINT_FLAGS_OFFSET;
+		if (input[1] == '-' && input[2] == '-') {
+			int rowsize = r_config_get_i (core->config, "hex.cols");
+			int ctxlines = r_num_math (core->num, input + 3);
+			if (ctxlines < 0) {
+				ctxlines = 0;
+			}
+			int size = rowsize + (rowsize * ctxlines * 2);
+			ut64 addr = core->offset - (rowsize * ctxlines);
+			r_core_cmdf (core, "px %d@0x%08"PFMT64x, size, addr);
+			break;
 		} else {
-			core->print->flags &= ~R_PRINT_FLAGS_OFFSET;
+			bool show_offset = r_config_get_i (core->config, "hex.offset");
+			if (show_offset) {
+				core->print->flags |= R_PRINT_FLAGS_OFFSET;
+			} else {
+				core->print->flags &= ~R_PRINT_FLAGS_OFFSET;
+			}
+			int show_header = r_config_get_i (core->config, "hex.header");
+			if (show_header) {
+				core->print->flags |= R_PRINT_FLAGS_HEADER;
+			} else {
+				core->print->flags &= ~R_PRINT_FLAGS_HEADER;
+			}
+			/* Don't show comments in default case */
+			core->print->use_comments = false;
 		}
-		int show_header = r_config_get_i (core->config, "hex.header");
-		if (show_header) {
-			core->print->flags |= R_PRINT_FLAGS_HEADER;
-		} else {
-			core->print->flags &= ~R_PRINT_FLAGS_HEADER;
-		}
-		/* Don't show comments in default case */
-		core->print->use_comments = false;
-	}
 		r_cons_break_push (NULL, NULL);
 		switch (input[1]) {
 		case 'j': // "pxj"

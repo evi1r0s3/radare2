@@ -13,8 +13,6 @@ else
 CS_RELEASE=1
 endif
 
-CS_NEXT=${CSNEXT}
-
 CAPSTONE_CFLAGS?=-g
 # CAPSTONE_MAKEFLAGS?=CAPSTONE_ARCHS="arm aarch64"
 
@@ -24,11 +22,6 @@ WGET?=wget -c --no-check-certificate -O
 else
 WGET?=curl -o
 endif
-
-# NOTE: when you update TS_TIP or TS_BRA, also update them in shlr/meson.build
-TS_URL=https://github.com/tree-sitter/tree-sitter.git
-TS_BRA=master
-TS_TIP=86a5dabbcbdac650c53a889183bf56d7e721e09e
 
 ifeq ($(CS_RELEASE),1)
 CS_VER=4.0.2
@@ -42,12 +35,12 @@ CS_URL=$(GIT_PREFIX)$(CS_URL_BASE).git
 CS_ARCHIVE=https://$(CS_URL_BASE)/archive
 CS_UPD=20201203
 # NOTE: when you update CS_TIP or CS_BRA, also update them in shlr/meson.build
-ifeq ($(CS_NEXT),1)
-CS_TIP=baa1f94cfdacd921744769bf7d93f00892ef53fa
-CS_BRA=next
-else
-CS_TIP=aa74f5d1ba5348c0441fbff0c0c151d95d2fa459
+ifeq ($(USE_CS4),1)
+CS_TIP=a7cac8352f7397aa73bb2e2dcc1b6cdb2e1b8461
 CS_BRA=v4
+else
+CS_TIP=f278de39c1e8a9fca977b8dfeed99d6d1f8b82bf
+CS_BRA=next
 endif
 ifeq ($(CS_COMMIT_ARCHIVE),1)
 CS_ARCHIVE_URL=$(CS_ARCHIVE)/$(CS_TIP).zip
@@ -59,7 +52,7 @@ CS_REV=
 CS_PATCHES=1
 endif
 
-.PHONY: capstone-sync capstone-build all clean mrproper libgdbr libwinkd bochs tree-sitter-sync sdbs
+.PHONY: capstone-sync capstone-build all clean mrproper libgdbr libwinkd bochs sdbs
 
 ifeq ($(shell gcc -v > /dev/null 2>&1 && echo works),works)
 HOST_CC?=gcc
@@ -67,7 +60,7 @@ endif
 SHLR?=$(shell pwd)
 AR?=ar
 RANLIB?=ranlib
-MODS=sdb zip java tcc mpc yxml
+MODS=sdb zip java mpc yxml
 MODS+=gdb qnx ar
 # lz4
 ifneq ($(CC),cccl)
@@ -75,13 +68,9 @@ ifeq (1,$(WITH_GPL))
 MODS+=grub
 endif
 endif
-ifeq (1,$(USE_PTRACE_WRAP))
-MODS+=ptrace-wrap
-endif
 SDB_URL=git://github.com/radareorg/sdb
 #SDB_URL=/Users/pancake/prg/sdb
 SPP_URL=git://github.com/radare/spp
-PTRACE_WRAP_URL=git://github.com/thestr4ng3r/ptrace-wrap
 PWD=$(shell pwd)
 SDB_CONFIG=${PWD}/sdb-config.mk
 
@@ -93,7 +82,7 @@ all:
 	exit 1
 endif
 
-preall: libwinkd capstone-build tree-sitter-build radare2-shell-parser-build bochs
+preall: libwinkd capstone-build bochs
 	@for MOD in ${MODS} ; do \
 		echo $(MAKE) -C $$MOD ; \
 		$(MAKE) -C $$MOD HAVE_VALA= ROOT="${PWD}/../" CC="${CC}" ; \
@@ -187,49 +176,6 @@ sdb-sync sync-sdb:
 	echo all clean mrproper: | tee sdb/test/Makefile > sdb/memcache/Makefile
 	git add sdb
 
-.PHONY: ptrace-wrap ptrace-wrap-sync sync-ptrace-wrap ptrace-wrap-clean clean-ptrace-wrap
-PTRACE_WRAP_F=include src README.md COPYING
-PTRACE_WRAP_SYNCFILES=$(addprefix ptrace-wrap.vc/,${PTRACE_WRAP_F})
-
-ptrace-wrap-sync sync-ptrace-wrap:
-	rm -rf ptrace-wrap ptrace-wrap.vc
-	git clone --depth 1 ${PTRACE_WRAP_URL} ptrace-wrap.vc
-	mkdir -p ptrace-wrap
-	cp -rf ${PTRACE_WRAP_SYNCFILES} ptrace-wrap
-	sed -e "s, library(, static_library(," -e "s,project(,# project(," -e "s,subdir(,# subdir(," ptrace-wrap.vc/meson.build > ptrace-wrap/meson.build
-	printf "include ../../libr/config.mk\ninclude ../../mk/platform.mk\ninclude ../../mk/${COMPILER}.mk\n\n" | cat - ptrace-wrap.vc/Makefile > ptrace-wrap/Makefile
-	rm -rf ptrace-wrap.vc
-	printf "CFLAGS+=-I\$$(STOP)/ptrace-wrap/include\nLINK+=\$$(STOP)/ptrace-wrap/libptrace_wrap.\$$(EXT_AR)\nPTRACEWRAP_OBJS=\$$(STOP)/ptrace-wrap/src/ptrace_wrap.o\n" > ptrace-wrap/deps.mk
-
-ptrace-wrap:
-	$(MAKE) -C ptrace-wrap all
-
-ptrace-wrap-clean clean-ptrace-wrap:
-	$(MAKE) -C ptrace-wrap clean
-
-$(TCCLIB) libr_tcc/libr_tcc.${EXT_AR}:
-	cd libr_tcc ; $(MAKE)
-
-tcc-clean tccclean:
-	cd libr_tcc ; $(MAKE) clean
-
-CFILES=i386-asm.c i386-gen.c libtcc.c tccasm.c tccelf.c tccgen.c tccpp.c
-HFILES=tcc.h i386-asm.h tcclib.h tcctok.h stab.h
-HFILES+=elf.h config.h i386-tok.h
-
-# TODO: use mob branch?
-
-.PHONY: sdb-sync sync-sdb sdbclean
-tcc-sync sync-tcc:
-	rm -rf _
-	$(GIT) clone --depth 1 git://repo.or.cz/tinycc.git _
-	cd _ ; ./configure --prefix=${PREFIX}
-	mkdir -p tcc
-	for FILE in ${CFILES} ${HFILES} ; do cp -f _/$$FILE tcc ; done
-	cp -f _/VERSION _/COPYING _/stab.def tcc
-	$(GIT) add tcc
-	rm -rf _
-
 ifeq ($(WITH_LIBR),1)
 install: libr_shlr.${EXT_AR}
 	mkdir -p ${DESTDIR}/${LIBDIR}
@@ -266,9 +212,17 @@ capstone: capstone-$(CS_VER).tar.gz
 	tar xzvf capstone-$(CS_VER).tar.gz
 	rm -rf capstone
 	mv capstone-$(CS_VER) capstone
+	$(MAKE) patch-capstone
+
+# already implemented in capstone.sh
+patch-capstone:
 ifeq ($(CS_PATCHES),1)
 	if [ -d capstone/.git ]; then \
-		cd capstone ; for PATCH in ../capstone-patches/* ; do patch -p1 < $$PATCH ; done ; \
+ifeq ($(USE_CS4),1)
+		cd capstone ; for PATCH in ../capstone-patches/v4/* ; do patch -p1 < $$PATCH ; done ; \
+else
+		cd capstone ; for PATCH in ../capstone-patches/v5/* ; do patch -p1 < $$PATCH ; done ; \
+endif
 	fi
 endif
 	mkdir -p capstone/include/capstone
@@ -286,6 +240,7 @@ ifeq ($(WITHOUT_PULL),1)
 else
 	"$(SHELL)" capstone.sh "${CS_URL}" "${CS_BRA}" "${CS_TIP}" "${CS_REV}" "${CS_ARCHIVE_URL}"
 endif
+
 
 .PHONY: capstone capstone-sync
 endif
@@ -313,38 +268,6 @@ ifeq ($(WITHOUT_PULL),1)
 else
 	cd ../../radare2-webui/www/m && git pull ; npm i ; $(MAKE) release
 endif
-
-tree-sitter-build: tree-sitter/libtree-sitter.$(EXT_AR)
-
-tree-sitter/libtree-sitter.$(EXT_AR): tree-sitter/lib/src/lib.o
-	$(AR) rvs $@ $<
-	$(RANLIB) $@
-
-tree-sitter/lib/src/lib.o:
-	$(CC) $(NEWSHELL_CFLAGS) -c tree-sitter/lib/src/lib.c -o $@ -Itree-sitter/lib/include -Itree-sitter/lib/src $(CFLAGS)
-
-tree-sitter-sync:
-	rm -rf tree-sitter tree-sitter.vc
-	"$(SHELL)" clone_3rd_repo.sh tree-sitter.vc "${TS_URL}" "${TS_BRA}" "${TS_TIP}"
-	mkdir -p tree-sitter/lib
-	cp -rf ./tree-sitter.vc/lib/src ./tree-sitter/lib
-	cp -rf ./tree-sitter.vc/lib/include ./tree-sitter/lib
-	rm -rf tree-sitter.vc
-
-radare2-shell-parser-build: radare2-shell-parser/libshell-parser.$(EXT_AR)
-
-radare2-shell-parser/libshell-parser.$(EXT_AR): radare2-shell-parser/src/parser.o radare2-shell-parser/src/scanner.o
-	$(AR) rvs $@ radare2-shell-parser/src/parser.o radare2-shell-parser/src/scanner.o
-	$(RANLIB) $@
-
-radare2-shell-parser/src/parser.o: radare2-shell-parser/src/parser.c
-	$(CC) $(NEWSHELL_CFLAGS) -c radare2-shell-parser/src/parser.c -o $@ -Iradare2-shell-parser/src/tree_sitter -Itree-sitter/lib/include $(CFLAGS)
-
-radare2-shell-parser/src/scanner.o: radare2-shell-parser/src/scanner.c
-	$(CC) -c radare2-shell-parser/src/scanner.c -o $@ -Iradare2-shell-parser/src/tree_sitter -Itree-sitter/lib/include $(CFLAGS)
-
-SHLRS+=tree-sitter/libtree-sitter.a
-SHLRS+=radare2-shell-parser/libshell-parser.a
 
 www-sync-m sync-www-m: ../../radare2-webui/dist/m
 	cp -rf ../../radare2-webui/dist/m www/m.tmp
@@ -378,7 +301,6 @@ spp-sync sync-spp:
 spp: spp-sync
 	CFLAGS="-DUSE_R2=1 -I../../libr/include -DHAVE_FORK=${HAVE_FORK} -fPIC" $(MAKE) -C spp r2lib
 
-SHLRS+=tcc/libr_tcc.a
 SHLRS+=ar/libr_ar.a
 SHLRS+=bochs/lib/libbochs.a
 SHLRS+=capstone/libcapstone.a
@@ -410,9 +332,4 @@ endif
 
 .PHONY: spp
 
-.PHONY: mpc mpc-clean clean-mpc
-mpc:
-	$(MAKE) -C mpc all
-
-mpc-clean clean-mpc:
-	$(MAKE) -C mpc clean
+include mpc/deps.mk

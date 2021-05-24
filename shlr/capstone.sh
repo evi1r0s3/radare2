@@ -25,8 +25,13 @@ fatal_msg() {
 
 patch_capstone() {
 	echo "[capstone] Applying patches..."
-	for patchfile in ../capstone-patches/*.patch ; do
-		yes n | patch -p 1 -i "${patchfile}"
+	if [ "$CS_BRA" = next ]; then
+		CV=v5
+	else
+		CV=v4
+	fi
+	for patchfile in ../capstone-patches/$CV/*.patch ; do
+		patch -p 1 < "${patchfile}"
 	done
 }
 
@@ -82,8 +87,8 @@ update_capstone_git() {
 	git reset --hard "${CS_TIP}"
 	if [ -n "${CS_REV}" ]; then
 		if ! git config user.name ; then
-			git config user.name "radare-travis"
-			git config user.email "radare-travis@foo.com"
+			git config user.name "radare"
+			git config user.email "radare@radare.org"
 		fi
 		env EDITOR=cat git revert --no-edit "${CS_REV}"
 	fi

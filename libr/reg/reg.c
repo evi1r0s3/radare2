@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2020 - pancake */
+/* radare - LGPL - Copyright 2009-2021 - pancake */
 
 #include <r_reg.h>
 #include <r_util.h>
@@ -70,6 +70,10 @@ R_API const char *r_reg_get_type(int idx) {
 R_API const char *r_reg_get_name_by_type(RReg *reg, const char *alias_name) {
 	const int n = r_reg_get_name_idx (alias_name);
 	return (n != -1)? r_reg_get_name (reg, n): NULL;
+}
+
+R_API int r_reg_default_bits(RReg *reg) {
+	return reg->bits_default;
 }
 
 R_API int r_reg_type_by_name(const char *str) {
@@ -145,7 +149,7 @@ R_API const char *r_reg_get_name(RReg *reg, int role) {
 }
 
 static const char *roles[R_REG_NAME_LAST + 1] = {
-	"PC", "SP", "SR", "BP", "LR",
+	"PC", "SP", "SR", "BP", "LR", "RS",
 	"A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9",
 	"R0", "R1", "R2", "R3",
 	"ZF", "SF", "CF", "OF",

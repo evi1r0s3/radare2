@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2020 - pancake */
+/* radare - LGPL - Copyright 2009-2021 - pancake */
 
 #include <r_userconf.h>
 #include <stdlib.h>
@@ -279,6 +279,23 @@ R_API char *r_sys_cmd_strf(const char *fmt, ...) {
 	ret = r_sys_cmd_str (cmd, NULL, NULL);
 	va_end (ap);
 	return ret;
+}
+
+R_API ut8 *r_sys_unxz(const ut8 *buf, size_t len, size_t *olen) {
+	char *err = NULL;
+	ut8 *out = NULL;
+	int _olen = 0;
+	int rc = r_sys_cmd_str_full ("xz -d", (const char *)buf, (int)len, (char **)&out, &_olen, &err);
+	if (rc == 0 || rc == 1) {
+		if (olen) {
+			*olen = (size_t)_olen;
+		}
+		free (err);
+		return out;
+	}
+	free (out);
+	free (err);
+	return NULL;
 }
 
 #ifdef __MAC_10_7
@@ -591,26 +608,29 @@ R_API int r_sys_thp_mode(void) {
 		}
 		free (val);
 	}
-
 	return ret;
 #else
-  return 0;
+	return 0;
 #endif
 }
 
 #if __UNIX__
-R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, int *len, char **sterr) {
+R_API int r_sys_cmd_str_full(const char *cmd, const char *input, int ilen, char **output, int *len, char **sterr) {
 	char *mysterr = NULL;
 	if (!sterr) {
 		sterr = &mysterr;
 	}
-	char buffer[1024], *outputptr = NULL;
+	ut8 buffer[1024];
+	char *outputptr = NULL;
 	char *inputptr = (char *)input;
 	int pid, bytes = 0, status;
 	int sh_in[2], sh_out[2], sh_err[2];
 
 	if (len) {
 		*len = 0;
+	}
+	if (ilen == -1 && inputptr) {
+		ilen = strlen (inputptr);
 	}
 	if (pipe (sh_in)) {
 		return false;
@@ -673,6 +693,7 @@ R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, 
 		// we should handle broken pipes somehow better
 		r_sys_signal (SIGPIPE, SIG_IGN);
 		size_t err_len = 0, out_len = 0;
+		size_t written = 0;
 		for (;;) {
 			fd_set rfds, wfds;
 			int nfd;
@@ -690,7 +711,7 @@ R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, 
 			memset (buffer, 0, sizeof (buffer));
 			nfd = select (sh_err[0] + 1, &rfds, &wfds, NULL, NULL);
 			if (nfd < 0) {
-				break;
+				// eprintf ("nfd %d 2%c", nfd, 10);
 			}
 			if (output && FD_ISSET (sh_out[0], &rfds)) {
 				if ((bytes = read (sh_out[0], buffer, sizeof (buffer))) < 1) {
@@ -716,20 +737,14 @@ R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, 
 				*sterr = tmp;
 				memcpy (*sterr + err_len, buffer, bytes);
 				err_len += bytes;
-			} else if (FD_ISSET (sh_in[1], &wfds) && inputptr && *inputptr) {
-				int inputptr_len = strlen (inputptr);
-				bytes = write (sh_in[1], inputptr, inputptr_len);
-				if (bytes != inputptr_len) {
-					break;
-				}
-				inputptr += bytes;
-				if (!*inputptr) {
+			} else if (FD_ISSET (sh_in[1], &wfds) && written < ilen) {
+				int inputptr_len = ilen >= 0? ilen - written: strlen (inputptr + written);
+				inputptr_len = R_MIN (inputptr_len, sizeof (buffer));
+				bytes = write (sh_in[1], inputptr + written, inputptr_len);
+				written += bytes;
+				if (written >= ilen) {
 					close (sh_in[1]);
-					/* If neither stdout nor stderr should be captured,
-					 * abort now - nothing more to do for select(). */
-					if (!output && !sterr) {
-						break;
-					}
+					// break;
 				}
 			}
 		}
@@ -769,11 +784,11 @@ R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, 
 	return false;
 }
 #elif __WINDOWS__
-R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, int *len, char **sterr) {
-	return r_sys_cmd_str_full_w32 (cmd, input, output, len, sterr);
+R_API int r_sys_cmd_str_full(const char *cmd, const char *input, int ilen, char **output, int *len, char **sterr) {
+	return r_sys_cmd_str_full_w32 (cmd, input, ilen, output, len, sterr);
 }
 #else
-R_API int r_sys_cmd_str_full(const char *cmd, const char *input, char **output, int *len, char **sterr) {
+R_API int r_sys_cmd_str_full(const char *cmd, const char *input, int ilen, char **output, int *len, char **sterr) {
 	eprintf ("r_sys_cmd_str: not yet implemented for this platform\n");
 	return false;
 }
@@ -822,7 +837,7 @@ R_API int r_sys_cmd(const char *str) {
 
 R_API char *r_sys_cmd_str(const char *cmd, const char *input, int *len) {
 	char *output = NULL;
-	if (r_sys_cmd_str_full (cmd, input, &output, len, NULL)) {
+	if (r_sys_cmd_str_full (cmd, input, -1, &output, len, NULL)) {
 		return output;
 	}
 	free (output);

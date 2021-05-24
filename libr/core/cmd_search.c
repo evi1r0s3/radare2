@@ -431,6 +431,11 @@ R_API int r_core_search_preludes(RCore *core, bool log) {
 
 	size_t fc0 = r_list_length (core->anal->fcns);
 	r_list_foreach (list, iter, p) {
+		if ((r_itv_end (p->itv) - p->itv.addr) >= ST32_MAX) {
+			// skip searching in large regions
+			eprintf ("aap: skipping large range, please check 'anal.in' variable.\n");
+			continue;
+		}
 		if (log) {
 			eprintf ("\r[>] Scanning %s 0x%"PFMT64x " - 0x%"PFMT64x " ",
 				r_str_rwx_i (p->perm), p->itv.addr, r_itv_end (p->itv));
@@ -1636,6 +1641,7 @@ static int r_core_search_rop(RCore *core, RInterval search_itv, int opt, const c
 			}
 		}
 		free (buf);
+		ht_uu_free (badstart);
 	}
 	if (r_cons_is_breaked ()) {
 		eprintf ("\n");
@@ -2340,6 +2346,9 @@ static void do_asm_search(RCore *core, struct search_parameters *param, const ch
 		hits = r_core_asm_strsearch (core, end_cmd,
 				from, to, maxhits, regexp, everyByte, mode);
 		if (hits) {
+			r_cons_break_pop ();
+			r_cons_break_push (NULL, NULL);
+			r_cons_singleton ()->context->breaked = false;
 			const char *cmdhit = r_config_get (core->config, "cmd.hit");
 			r_list_foreach (hits, iter, hit) {
 				if (r_cons_is_breaked ()) {
@@ -2387,6 +2396,7 @@ static void do_asm_search(RCore *core, struct search_parameters *param, const ch
 			}
 			r_list_purge (hits);
 			free (hits);
+			r_cons_break_pop ();
 		}
 	}
 	if (param->outmode == R_MODE_JSON) {
@@ -3381,6 +3391,7 @@ reread:
 			{
 				RSearchKeyword *kw;
 				kw = r_search_keyword_new_hex ("308200003082", "ffff0000ffff", NULL);
+				r_search_reset (core->search, R_SEARCH_KEYWORD);
 				if (kw) {
 					r_search_kw_add (core->search, kw);
 					// eprintf ("Searching %d byte(s)...\n", kw->keyword_length);

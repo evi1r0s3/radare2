@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2020 - pancake */
+/* radare - LGPL - Copyright 2009-2021 - pancake */
 
 #include <r_core.h>
 #include <r_debug.h>
@@ -268,6 +268,12 @@ static const char *help_msg_dmm[] = {
 	NULL
 };
 
+static const char *help_msg_dxe[] = {
+	"Usage:", "dxe", " egg-program # see ragg2 and the 'g' command for more details",
+	"dxe", " sym.imp.puts(\"foo\")", "Call puts with a string argument",
+	NULL
+};
+
 static const char *help_msg_dmp[] = {
 	"Usage:", "dmp", " Change page permissions",
 	"dmp", " [addr] [size] [perms]", "Change permissions",
@@ -432,7 +438,8 @@ static const char *help_msg_ds[] = {
 static const char *help_msg_dsu[] = {
 	"Usage: dsu", "", "Step until commands",
 	"dsu", " <address>", "Step until <address>",
-	"dsui", "[r] <instr>", "Step until an instruction that matches <instr>, use dsuir for regex match",
+	"dsui", " <instr>", "Step until an instruction disasm matches",
+	"dsuir", " <regex>", "like dsui, but using a regexp",
 	"dsuo", " <optype> [<optype> ...]", "Step until an instr matches one of the <optype>s.",
 	"dsue", " <esil>", "Step until <esil> expression matches",
 	"dsuf", " <flag>", "Step until pc == <flag> matching name",
@@ -484,6 +491,7 @@ static const char *help_msg_dx[] = {
 	"Usage: dx", "", " # Code injection commands",
 	"dx", " <opcode>...", "Inject opcodes",
 	"dxa", " nop", "Assemble code and inject",
+	"dxc", " addr arg1 arg2 arg3", "Compile egg expression and inject it",
 	"dxe", " egg-expr", "Compile egg expression and inject it",
 	"dxr", " <opcode>...", "Inject opcodes and restore state",
 	"dxs", " write 1, 0x8048, 12", "Syscall injection (see gs)",
@@ -554,7 +562,7 @@ static void setRarunProfileString(RCore *core, const char *str) {
 	free (file);
 }
 
-static void cmd_debug_cont_syscall (RCore *core, const char *_str) {
+static void cmd_debug_cont_syscall(RCore *core, const char *_str) {
 	// TODO : handle more than one stopping syscall
 	int i, *syscalls = NULL;
 	int count = 0;
@@ -1218,7 +1226,13 @@ static int grab_bits(RCore *core, const char *arg, int *pcbits2) {
 		*pcbits2 = 0;
 	}
 	if (pcbits < 1) {
-		if (!strcmp (r_config_get (core->config, "asm.arch"), "avr")) {
+		int rpbits = r_reg_default_bits (core->anal->reg);
+		if (rpbits) {
+			pcbits = rpbits;
+			if (pcbits2) {
+				*pcbits2 = 32;
+			}
+		} else if (!strcmp (r_config_get (core->config, "asm.arch"), "avr")) {
 			pcbits = 8;
 			if (pcbits2) {
 				*pcbits2 = 32;
@@ -2041,7 +2055,8 @@ static void show_drpi(RCore *core) {
 	RRegItem *ri;
 	r_cons_printf ("Aliases (Reg->name)\n");
 	for (i = 0; i < R_REG_NAME_LAST; i++) {
-		r_cons_printf ("%d %s %s\n", i, r_reg_get_role (i), core->anal->reg->name[i]);
+		const char *v = r_str_get_fail (core->anal->reg->name[i], "?");
+		r_cons_printf ("%d %s %s\n", i, r_reg_get_role (i), v);
 	}
 	for (i = 0; i < R_REG_TYPE_LAST; i++) {
 		const char *nmi = r_reg_get_type (i);
@@ -2404,6 +2419,10 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 			r_debug_reg_sync (core->dbg, R_REG_TYPE_ALL, false); //R_REG_TYPE_GPR, false);
 			int count = r_list_length (args);
 			r_list_foreach (args, iter, arg) {
+				r = r_reg_get (core->dbg->reg, arg, -1);
+				if (!r) {
+					continue;
+				}
 				ut64 off = r_debug_reg_get (core->dbg, arg);
 				if (count == 1) {
 					r_cons_printf ("0x%08"PFMT64x"\n", off);
@@ -2502,7 +2521,16 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 		break;
 	case 'c': // "drc"
 		// todo: set flag values with drc zf=1
-		if (str[1] == '=') {
+		if (str[1] == 'q') { // "drcq"
+			RRegFlags *rf = r_reg_cond_retrieve (core->dbg->reg, NULL);
+			if (rf) {
+				r_cons_printf ("s:%d z:%d c:%d o:%d p:%d\n",
+						rf->s, rf->z, rf->c, rf->o, rf->p);
+				free (rf);
+			}
+			break;
+		}
+		if (str[1] == '=') { // "drc="
 			RRegFlags *rf = r_reg_cond_retrieve (core->dbg->reg, NULL);
 			if (rf) {
 				r_cons_printf ("s:%d z:%d c:%d o:%d p:%d\n",
@@ -2934,8 +2962,9 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 			} else {
 				RReg *orig = core->dbg->reg;
 				core->dbg->reg = core->anal->reg;
-				if (pcbits && pcbits != bits)
+				if (pcbits && pcbits != bits) {
 					r_debug_reg_list (core->dbg, R_REG_TYPE_GPR, pcbits, NULL, '=', use_color); // xxx detect which one is current usage
+				}
 				r_debug_reg_list (core->dbg, R_REG_TYPE_GPR, bits, NULL, '=', use_color); // xxx detect which one is current usage
 				core->dbg->reg = orig;
 			}
@@ -4613,8 +4642,7 @@ static int cmd_debug_step (RCore *core, const char *input) {
 		case 'i': // dsui
 			if (input[3] == 'r') {
 				step_until_inst (core, input + 4, true);
-			}
-			else {
+			} else {
 				step_until_inst (core, input + 3, false);
 			}
 			break;
@@ -5210,7 +5238,7 @@ static int cmd_debug(void *data, const char *input) {
 					}
 				}
 				if (stop != -1) {
-					P ("stopreason=%d\n", stop);
+					P ("stopreason=%s\n", r_debug_reason_to_string (stop));
 				}
 				break;
 			case 'f': // "dif" "diff"
@@ -5436,10 +5464,14 @@ static int cmd_debug(void *data, const char *input) {
 			ut8 bytes[4096];
 			if (strlen (input + 2) < 4096){
 				int bytes_len = r_hex_str2bin (input + 2, bytes);
-				if (bytes_len>0) r_debug_execute (core->dbg,
-						bytes, bytes_len, 0);
-				else eprintf ("Invalid hexpairs\n");
-			} else eprintf ("Injection opcodes so long\n");
+				if (bytes_len > 0) {
+					r_debug_execute (core->dbg, bytes, bytes_len, 0);
+				} else {
+					eprintf ("Invalid hexpairs\n");
+				}
+			} else {
+				eprintf ("Injection opcodes so long\n");
+			}
 			break;
 		}
 		case 'a': { // "dxa"
@@ -5454,25 +5486,34 @@ static int cmd_debug(void *data, const char *input) {
 			r_asm_code_free (acode);
 			break;
 		}
-		case 'e': { // "dxe"
-			REgg *egg = core->egg;
-			RBuffer *b;
-			const char *asm_arch = r_config_get (core->config, "asm.arch");
-			int asm_bits = r_config_get_i (core->config, "asm.bits");
-			const char *asm_os = r_config_get (core->config, "asm.os");
-			r_egg_setup (egg, asm_arch, asm_bits, 0, asm_os);
-			r_egg_reset (egg);
-			r_egg_load (egg, input + 1, 0);
-			r_egg_compile (egg);
-			b = r_egg_get_bin (egg);
-			r_asm_set_pc (core->rasm, core->offset);
-			r_reg_arena_push (core->dbg->reg);
-			ut64 tmpsz;
-			const ut8 *tmp = r_buf_data (b, &tmpsz);
-			r_debug_execute (core->dbg, tmp, tmpsz, 0);
-			r_reg_arena_pop (core->dbg->reg);
+		case 'e':
+			if (input[2] == '?') {
+				r_core_cmd_help (core, help_msg_dxe);
+			} else { // "dxe"
+				const char *program = r_str_trim_head_ro (input + 2);
+				REgg *egg = core->egg;
+				const char *asm_arch = r_config_get (core->config, "asm.arch");
+				int asm_bits = r_config_get_i (core->config, "asm.bits");
+				const char *asm_os = r_config_get (core->config, "asm.os");
+				r_egg_setup (egg, asm_arch, asm_bits, 0, asm_os);
+				r_egg_reset (egg);
+				r_egg_load (egg, program, 0);
+				if (!r_egg_compile (egg)) {
+					eprintf ("Failed to compile.\n");
+				}
+				RBuffer *b = r_egg_get_bin (egg);
+				r_asm_set_pc (core->rasm, core->offset);
+				r_reg_arena_push (core->dbg->reg);
+				ut64 tmpsz;
+				const ut8 *tmp = r_buf_data (b, &tmpsz);
+				if (tmpsz > 0) {
+					r_debug_execute (core->dbg, tmp, tmpsz, 0);
+				} else {
+					eprintf ("No egg program compiled to execute.\n");
+				}
+				r_reg_arena_pop (core->dbg->reg);
+			}
 			break;
-		}
 		case 'r': // "dxr"
 			r_reg_arena_push (core->dbg->reg);
 			if (input[2] == ' ') {

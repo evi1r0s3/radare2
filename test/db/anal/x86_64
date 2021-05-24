@@ -480,8 +480,8 @@ EXPECT=<<EOF
 |           0x00003ec1      add rax, rbx
 |           ;-- switch
 |           0x00003ec4      jmp rax                                    ; switch table (275 cases) at 0x172d8
-|           ; CODE XREF from main @ 0x3ec4
 |           ;-- case 110:                                              ; from 0x3ec4
+|           ; CODE XREF from main @ 0x3ec4
 |           0x00003ec6      mov byte [0x00021260], 1                   ; [0x21260:1]=0
 EOF
 RUN
@@ -1325,7 +1325,7 @@ RUN
 NAME=delete memory format with Cf-
 FILE=bins/dmg/src/Hello
 CMDS=<<EOF
-e prj.git=false
+e prj.vc=false
 e asm.arch=x86
 e asm.bits=64
 pd 1
@@ -1422,8 +1422,8 @@ EXPECT=<<EOF
 |      ,==< 0x00003cb2      je 0x3ce3
 |      ||   0x00003cb4      sub eax, 1
 |     ,===< 0x00003cb7      je 0x3cbe
-|     |||   ; CODE XREFS from main @ 0x58bc, 0x58d2
 |     |||   ;-- default:                                               ; from 0x58d2
+|     |||   ; CODE XREFS from main @ 0x58bc, 0x58d2
 |     |||   0x00003cb9      call sym.imp.abort                         ; void abort(void)
 |     |||   ; CODE XREF from main @ 0x3cb7
 |     `---> 0x00003cbe      mov edi, 1                                 ; int fd
@@ -1465,8 +1465,8 @@ EXPECT=<<EOF
 |    ,====< 0x00003cb2      je 0x3ce3
 |    | |    0x00003cb4      sub eax, 1
 |  ,======< 0x00003cb7      je 0x3cbe
-|  | | |    ; CODE XREFS from main @ 0x58bc, 0x58d2
 |  | | |    ;-- default:                                               ; from 0x58d2
+|  | | |    ; CODE XREFS from main @ 0x58bc, 0x58d2
 |  | | |    0x00003cb9      call sym.imp.abort                         ; void abort(void)
 |  | | |    ; CODE XREF from main @ 0x3cb7
 |  `------> 0x00003cbe      mov edi, 1                                 ; int fd
@@ -1507,8 +1507,8 @@ EXPECT=<<EOF
 |    ,====< 0x00003cb2      je 0x3ce3
 |    | |    0x00003cb4      sub eax, 1
 |  ,======< 0x00003cb7      je 0x3cbe
-|  | | |    ; CODE XREFS from main @ 0x58bc, 0x58d2
 |  | | |    ;-- default:                                               ; from 0x58d2
+|  | | |    ; CODE XREFS from main @ 0x58bc, 0x58d2
 |  | | |    0x00003cb9      call sym.imp.abort                         ; void abort(void)
 |  | | |    ; CODE XREF from main @ 0x3cb7
 |  `------> 0x00003cbe      mov edi, 1                                 ; int fd
@@ -1677,7 +1677,7 @@ w hello @ 0x18
 pd 2
 EOF
 EXPECT=<<EOF
-            0x00000000      15008052       movz w21, 0
+            0x00000000      15008052       mov w21, 0
         ,=< 0x00000004      b5000034       cbz w21, 0x18               ; likely
 EOF
 RUN
@@ -2024,6 +2024,7 @@ EXPECT=<<EOF
 cdecl
             ; CALL XREF from main @ 0x80484db
 / (fcn) sym.nonfastcaslled 51
+// void sym.nonfastcaslled (int32_t arg_8h, int32_t arg_ch, int32_t arg_10h, int32_t arg_14h);
 |           ; var int32_t var_10h @ ebp-0x10
 |           ; var int32_t var_ch @ ebp-0xc
 |           ; arg int32_t arg_8h @ ebp+0x8
@@ -2467,7 +2468,7 @@ EXPECT=<<EOF
     "esil": "8,rsp,-=,eflags,rsp,=[8]",
     "sign": false,
     "prefix": 0,
-    "id": 591,
+    "id": 612,
     "opex": {
       "operands": [
         {
@@ -2656,13 +2657,13 @@ pd 1 @0x4007f0
 pd 1 @0x400610
 EOF
 EXPECT=<<EOF
-; DATA XREF from entry0 @ +0xf
 ;-- __libc_csu_fini:
+; DATA XREF from entry0 @ +0xf
 0x00400730      f3c3           ret
 ; CODE XREF from sym.__do_global_ctors_aux @ +0x2d
 0x004007f0      4883eb08       sub rbx, 8
-; CALL XREF from section..fini @ +0x4
 ;-- __do_global_dtors_aux:
+; CALL XREF from section..fini @ +0x4
 0x00400610      55             push rbp
 EOF
 RUN
@@ -3239,7 +3240,7 @@ mnemonic: push
 description: push word, doubleword or quadword onto the stack
 mask: ff
 prefix: 0
-id: 588
+id: 609
 bytes: 55
 refptr: 0
 size: 1

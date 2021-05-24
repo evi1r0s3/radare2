@@ -1,9 +1,13 @@
-/* radare - LGPL - Copyright 2013-2019 - pancake */
+/* radare - LGPL - Copyright 2013-2021 - pancake */
 
 #include "r_util.h"
 #include "r_types.h"
 #include "r_parse.h"
+#define ONE_SOURCE 1
 #include "tcc.h"
+#include "c/tccgen.c"
+#include "c/tccpp.c"
+#include "c/libtcc.c"
 
 extern int tcc_sym_push(char *typename, int typesize, int meta);
 
@@ -101,11 +105,23 @@ R_API char *r_parse_c_file(RAnal *anal, const char *path, const char *dir, char 
 	}
 	tcc_set_callback (T, &__appendString, &str);
 	tcc_set_error_func (T, (void *)error_msg, __errorFunc);
-	sdb_foreach (anal->sdb_types, __typeLoad, anal);
-	if (tcc_add_file (T, path, dir) == -1) {
-		free (str);
-		str = NULL;
+	sdb_foreach (anal->sdb_types, __typeLoad, anal); // why is this needed??
+	char *d = strdup (dir);
+	RList *dirs = r_str_split_list (d, ":", 0);
+	RListIter *iter;
+	char *di;
+	bool found = false;
+	r_list_foreach (dirs, iter, di) {
+		if (tcc_add_file (T, path, di) != -1) {
+			found = true;
+			break;
+		}
 	}
+	if (!found) {
+		R_FREE (str);
+	}
+	r_list_free (dirs);
+	free (d);
 	tcc_delete (T);
 	return str;
 }
@@ -120,8 +136,7 @@ R_API char *r_parse_c_string(RAnal *anal, const char *code, char **error_msg) {
 	tcc_set_error_func (T, (void *)error_msg, __errorFunc);
 	sdb_foreach (anal->sdb_types, __typeLoad, NULL);
 	if (tcc_compile_string (T, code) != 0) {
-		free (str);
-		str = NULL;
+		R_FREE (str);
 	}
 	tcc_delete (T);
 	return str;

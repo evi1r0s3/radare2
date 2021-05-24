@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2020 - pancake */
+/* radare - LGPL - Copyright 2009-2021 - pancake */
 
 #include <r_core.h>
 #include <r_cons.h>
@@ -8,6 +8,7 @@
 
 static void visual_refresh(RCore *core);
 
+// remove globals pls
 static int obs = 0;
 static int blocksize = 0;
 static bool autoblocksize = true;
@@ -30,7 +31,7 @@ typedef struct {
 static const char *printfmtSingle[NPF] = {
 	"xc",  // HEXDUMP
 	"pd $r",  // ASSEMBLY
-	"pxw 64@r:SP;dr=;pd $r",  // DEBUGGER
+	"pxw 64@r:SP;dr=;drcq;pd $r",  // DEBUGGER
 	"prc", // OVERVIEW
 	"pss", // PC//  copypasteable views
 };
@@ -56,7 +57,7 @@ static const char *printHexFormats[PRINT_HEX_FORMATS] = {
 };
 static int current3format = 0;
 static const char *print3Formats[PRINT_3_FORMATS] = { //  not used at all. its handled by the pd format
-	"pxw 64@r:SP;dr=;pd $r", // DEBUGGER
+	"pxw 64@r:SP;dr=;drcq;pd $r", // DEBUGGER
 	"pCD"
 };
 static int current4format = 0;
@@ -2575,7 +2576,8 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 		break;
 		case '!':
 			r_core_panels_root (core, core->panels_root);
-			break;
+			setcursor (core, false);
+			return false;
 		case 'g':
 			r_core_visual_showcursor (core, true);
 			r_core_visual_offset (core);
@@ -2753,6 +2755,11 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 			ut64 oaddr = core->offset;
 			int delta = (core->print->ocur != -1)? R_MIN (core->print->cur, core->print->ocur): core->print->cur;
 			ut64 addr = core->offset + delta;
+			if (!canWrite (core, addr)) {
+				r_cons_printf ("\nFile has been opened in read-only mode. Use -w flag, oo+ or e io.cache=true\n");
+				r_cons_any_key (NULL);
+				return true;
+			}
 			if (PIDX == 0) {
 				if (strstr (printfmtSingle[0], "pxb")) {
 					r_core_visual_define (core, "1", 1);
@@ -2777,11 +2784,6 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 					}
 					return true;
 				}
-			}
-			if (!canWrite (core, addr)) {
-				r_cons_printf ("\nFile has been opened in read-only mode. Use -w flag, oo+ or e io.cache=true\n");
-				r_cons_any_key (NULL);
-				return true;
 			}
 			r_core_visual_showcursor (core, true);
 			r_cons_flush ();
@@ -2871,6 +2873,9 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 				r_core_cmd0 (core, "e asm.hint.jmp=true");
 			} else if (r_config_get_i (core->config, "asm.hint.jmp")) {
 				r_core_cmd0 (core, "e!asm.hint.jmp");
+				r_core_cmd0 (core, "e asm.hint.imm=true");
+			} else if (r_config_get_i (core->config, "asm.hint.imm")) {
+				r_core_cmd0 (core, "e!asm.hint.imm");
 				r_core_cmd0 (core, "e asm.hint.emu=true");
 			} else if (r_config_get_i (core->config, "asm.hint.emu")) {
 				r_core_cmd0 (core, "e!asm.hint.emu");
@@ -3294,15 +3299,19 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 							r_config_get_i (core->config, "stack.size") - w);
 					}
 				} else {
+					if (!canWrite (core, core->offset)) {
+						r_cons_printf ("\nFile has been opened in read-only mode. Use -w flag, oo+ or e io.cache=true\n");
+						r_cons_any_key (NULL);
+						return true;
+					}
 					if (core->print->ocur == -1) {
-						sprintf (buf, "wos 01 @ $$+%i!1",core->print->cur);
+						r_core_cmdf (core, "wos 01 @ $$+%i!1", core->print->cur);
 					} else {
-						sprintf (buf, "wos 01 @ $$+%i!%i", core->print->cur < core->print->ocur
+						r_core_cmdf (core, "wos 01 @ $$+%i!%i", core->print->cur < core->print->ocur
 							? core->print->cur
 							: core->print->ocur,
 							R_ABS (core->print->ocur - core->print->cur) + 1);
 					}
-					r_core_cmd (core, buf, 0);
 				}
 			} else {
 				if (!autoblocksize) {
@@ -3324,15 +3333,19 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 							r_config_get_i (core->config, "stack.size") + w);
 					}
 				} else {
+					if (!canWrite (core, core->offset)) {
+						r_cons_printf ("\nFile has been opened in read-only mode. Use -w flag, oo+ or e io.cache=true\n");
+						r_cons_any_key (NULL);
+						return true;
+					}
 					if (core->print->ocur == -1) {
-						sprintf (buf, "woa 01 @ $$+%i!1", core->print->cur);
+						r_core_cmdf (core, "woa 01 @ $$+%i!1", core->print->cur);
 					} else {
-						sprintf (buf, "woa 01 @ $$+%i!%i", core->print->cur < core->print->ocur
+						r_core_cmdf (core, "woa 01 @ $$+%i!%i", core->print->cur < core->print->ocur
 							? core->print->cur
 							: core->print->ocur,
 							R_ABS (core->print->ocur - core->print->cur) + 1);
 					}
-					r_core_cmd (core, buf, 0);
 				}
 			} else {
 				if (!autoblocksize) {
@@ -3473,10 +3486,10 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 							RIOMap *map = r_pvector_pop (&core->io->maps);
 							if (map) {
 								entry = r_io_map_begin (map);
+								r_pvector_push_front (&core->io->maps, map);
 							} else {
 								entry = r_config_get_i (core->config, "bin.baddr");
 							}
-							r_pvector_push_front (&core->io->maps, map);
 						}
 					}
 					if (entry != UT64_MAX) {
@@ -3513,40 +3526,23 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 					r_core_seek (core, addr, false);
 					r_core_cmdf (core, "s 0x%"PFMT64x, addr);
 				}
-				if (!strcmp (buf + i, "-")) {
-					strcpy (buf, "CC-");
-				} else {
-					switch (buf[i]) {
-					case '-':
-						memcpy (buf, "\"CC-\x00", 5);
-						break;
-					case '!':
-						memcpy (buf, "\"CC!\x00", 5);
-						break;
-					default:
-						memcpy (buf, "\"CC ", 4);
-						break;
-					}
-					strcat (buf, "\"");
+				const char *command = "CC ";
+				const char *argument = NULL;
+				switch (buf[i]) {
+				case '-':
+					command = "CC-";
+					argument = r_str_trim_head_ro (buf + i + 1);
+					break;
+				case '!':
+					command = "CC!";
+					argument = r_str_trim_head_ro (buf + i + 1);
+					break;
+				default:
+					command = "CC ";
+					argument = r_str_trim_head_ro (buf + i);
+					break;
 				}
-				if (buf[3] == ' ') {
-					// have to escape any quotes.
-					int j, len = strlen (buf);
-					char *duped = strdup (buf);
-					for (i = 4, j = 4; i < len; i++, j++) {
-						char c = duped[i];
-						if (c == '"' && i != (len - 1)) {
-							buf[j] = '\\';
-							j++;
-							buf[j] = '"';
-						} else {
-							buf[j] = c;
-						}
-					}
-					buf[j] = 0;
-					free (duped);
-				}
-				r_core_cmd (core, buf, 1);
+				r_core_cmdf (core, "\"%s%s\"", command, argument);
 				if (core->print->cur_enabled) {
 					r_core_seek (core, orig, true);
 				}
@@ -4062,6 +4058,7 @@ static void visual_refresh(RCore *core) {
 	}
 	r_cons_flush ();
 	r_cons_print_clear ();
+	r_cons_singleton ()->noflush = true;
 
 	int hex_cols = r_config_get_i (core->config, "hex.cols");
 	int split_w = 12 + 4 + hex_cols + (hex_cols * 3);
@@ -4156,7 +4153,7 @@ static void visual_refresh(RCore *core) {
 	}
 #endif
 	blocksize = core->num->value? core->num->value: core->blocksize;
-
+	r_cons_singleton ()->noflush = false;
 	/* this is why there's flickering */
 	if (core->print->vflush) {
 		r_cons_visual_flush ();
@@ -4313,7 +4310,7 @@ dodo:
 
 			if (cmdvhex && *cmdvhex) {
 				snprintf (debugstr, sizeof (debugstr),
-					"?t0;f tmp;ssr %s;%s;?t1;%s;?t1;"
+					"?t0;f tmp;ssr %s;%s;?t1;%s;drcq;?t1;"
 					"ss tmp;f-tmp;pd $r", reg, cmdvhex,
 					ref? "drr": "dr=");
 				debugstr[sizeof (debugstr) - 1] = 0;
@@ -4323,7 +4320,7 @@ dodo:
 				const int absdelta = R_ABS (delta);
 				snprintf (debugstr, sizeof (debugstr),
 					"diq;?t0;f tmp;ssr %s;%s %d@$$%c%d;"
-					"?t1;%s;"
+					"?t1;%s;drcq;"
 					"?t1;ss tmp;f-tmp;afal;pd $r",
 					reg, pxa? "pxa": pxw, size, sign, absdelta,
 					ref? "drr": "dr=");

@@ -20,8 +20,6 @@
 #include <r_bin.h>
 #include <r_codemeta.h>
 
-#define esilprintf(op, fmt, ...) r_strbuf_setf (&op->esil, fmt, ##__VA_ARGS__)
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -61,6 +59,9 @@ typedef struct r_anal_range_t {
 	ut64 rb_max_addr;
 	RBNode rb;
 } RAnalRange;
+
+
+#define esilprintf(op, fmt, ...) r_strbuf_setf (&op->esil, fmt, ##__VA_ARGS__)
 
 #define R_ANAL_GET_OFFSET(x,y,z) \
 	(x && x->binb.bin && x->binb.get_offset)? \
@@ -585,7 +586,6 @@ typedef struct r_anal_options_t {
 	int bb_max_size;
 	bool trycatch;
 	bool norevisit;
-	int afterjmp; // continue analysis after jmp eax or forward jmp // option
 	int recont; // continue on recurse analysis mode
 	int noncode;
 	int nopskip; // skip nops at the beginning of functions
@@ -2129,6 +2129,8 @@ R_API RAnalEsilCFG *r_anal_esil_cfg_expr(RAnalEsilCFG *cfg, RAnal *anal, const u
 R_API RAnalEsilCFG *r_anal_esil_cfg_op(RAnalEsilCFG *cfg, RAnal *anal, RAnalOp *op);
 R_API void r_anal_esil_cfg_merge_blocks(RAnalEsilCFG *cfg);
 R_API void r_anal_esil_cfg_free(RAnalEsilCFG *cfg);
+R_API SdbGperf *r_anal_get_gperf_cc(const char *k);
+R_API SdbGperf *r_anal_get_gperf_types(const char *k);
 
 R_API RAnalEsilDFGNode *r_anal_esil_dfg_node_new(RAnalEsilDFG *edf, const char *c);
 R_API RAnalEsilDFG *r_anal_esil_dfg_new(RReg *regs);
@@ -2188,7 +2190,7 @@ extern RAnalPlugin r_anal_plugin_sh;
 extern RAnalPlugin r_anal_plugin_snes;
 extern RAnalPlugin r_anal_plugin_sparc_cs;
 extern RAnalPlugin r_anal_plugin_sparc_gnu;
-extern RAnalPlugin r_anal_plugin_sysz;
+extern RAnalPlugin r_anal_plugin_s390_cs;
 extern RAnalPlugin r_anal_plugin_tms320;
 extern RAnalPlugin r_anal_plugin_tms320c64x;
 extern RAnalPlugin r_anal_plugin_tricore;

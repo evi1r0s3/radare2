@@ -2,7 +2,7 @@
 
 #include <r_asm.h>
 #include <r_lib.h>
-#include <capstone.h>
+#include "cs_version.h"
 
 #define USE_ITER_API 0
 
@@ -25,7 +25,7 @@ static bool the_end(void *p) {
 	return true;
 }
 
-static int check_features(RAsm *a, cs_insn *insn);
+static bool check_features(RAsm *a, cs_insn *insn);
 
 #include "cs_mnemonics.c"
 
@@ -158,7 +158,7 @@ static int disassemble(RAsm *a, RAsmOp *op, const ut8 *buf, int len) {
 
 RAsmPlugin r_asm_plugin_x86_cs = {
 	.name = "x86",
-	.desc = "Capstone X86 disassembler",
+	.desc = "Capstone "CAPSTONE_VERSION_STRING" X86 disassembler",
 	.license = "BSD",
 	.arch = "x86",
 	.bits = 16|32|64,
@@ -171,11 +171,11 @@ RAsmPlugin r_asm_plugin_x86_cs = {
 		"sse3,sse41,sse42,sse4a,ssse3,pclmul,xop"
 };
 
-static int check_features(RAsm *a, cs_insn *insn) {
+static bool check_features(RAsm *a, cs_insn *insn) {
 	const char *name;
 	int i;
 	if (!insn || !insn->detail) {
-		return 1;
+		return true;
 	}
 	for (i = 0; i < insn->detail->groups_count; i++) {
 		int id = insn->detail->groups[i];
@@ -190,13 +190,13 @@ static int check_features(RAsm *a, cs_insn *insn) {
 		}
 		name = cs_group_name (cd, id);
 		if (!name) {
-			return 1;
+			return true;
 		}
 		if (!strstr (a->features, name)) {
-			return 0;
+			return false;
 		}
 	}
-	return 1;
+	return true;
 }
 
 #ifndef R2_PLUGIN_INCORE

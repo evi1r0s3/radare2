@@ -1,4 +1,5 @@
 r_core_sources = [
+  'rvc.c',
   'anal_tp.c',
   'anal_objc.c',
   'casm.c',
@@ -66,6 +67,7 @@ r_core_sources = [
   'vmenus_zigns.c',
   'yank.c',
   'p/core_a2f.c',
+  'p/core_sixref.c',
   'p/core_java.c'
 ]
 
@@ -103,8 +105,7 @@ r_core_deps = [
   platform_deps,
   gdb_dep,
   java_dep,
-  lrt,
-  shell_parser_dep
+  lrt
 ]
 
 if use_libuv

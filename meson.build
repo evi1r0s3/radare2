@@ -1,4 +1,4 @@
-project('radare2', 'c', license : 'LGPL3', meson_version : '>=0.50.1', version : '5.2.0')
+project('radare2', 'c', license : 'LGPL3', meson_version : '>=0.49', version : '5.3.0')
 
 py3_exe = import('python').find_installation('python3')
 git_exe = find_program('git', required: false)
@@ -10,10 +10,7 @@ vers = r2_version.split('.')
 r2_version_major = vers[0].to_int()
 r2_version_minor = vers[1].to_int()
 r2_version_patch = vers[2].split('-')[0].to_int()
-r2_version_number \
-  = (r2_version_major * 10000) \
-  + (r2_version_minor * 100) \
-  + (r2_version_patch)
+r2_version_number = (r2_version_major * 10000) + (r2_version_minor * 100) + (r2_version_patch)
 
 repo = '.'
 if meson.is_subproject()
@@ -222,6 +219,13 @@ conf_data.set('plugins_debug', '&r_debug_plugin_' + ', &r_debug_plugin_'.join(de
 conf_data.set('plugins_egg', '&r_egg_plugin_' + ', &r_egg_plugin_'.join(egg_plugins) + ', 0')
 conf_data.set('plugins_lang', '&r_lang_plugin_' + ', &r_lang_plugin_'.join(lang_plugins) + ', 0')
 conf_data.set('plugins_parse', '&r_parse_plugin_' + ', &r_parse_plugin_'.join(parse_plugins) + ', 0')
+
+# userconf_h = configure_file(
+#  input: 'libr/include/r_userconf.h.acr',
+#  output: 'r_userconf.h',
+#  configuration: conf_data
+#)
+
 config_h = configure_file(
   input: 'libr/config.h.in',
   output: 'config.h',
@@ -237,8 +241,11 @@ if sys_magic.found() and get_option('use_sys_magic')
 endif
 
 # handle xxhash library
-sys_xxhash = dependency('xxhash', required: false)
+sys_xxhash = dependency('libxxhash', required: false)
 use_sys_xxhash = false
+if not sys_xxhash.found()
+  sys_xxhash = dependency('xxhash', required: false)
+endif
 if not sys_xxhash.found()
   sys_xxhash = cc.find_library('xxhash', required: false)
 endif
@@ -288,10 +295,10 @@ endif
 
 has_debugger = get_option('debugger')
 have_ptrace = not ['windows', 'cygwin', 'sunos'].contains(host_machine.system())
-use_ptrace_wrap = ['linux'].contains(host_machine.system())
+can_ptrace_wrap = ['linux'].contains(host_machine.system())
 
 have_ptrace = have_ptrace and has_debugger
-use_ptrace_wrap = use_ptrace_wrap and has_debugger
+use_ptrace_wrap = can_ptrace_wrap and has_debugger
 
 message('HAVE_PTRACE: @0@'.format(have_ptrace))
 message('USE_PTRACE_WRAP: @0@'.format(use_ptrace_wrap))
@@ -314,6 +321,7 @@ userconf.set10('USE_LIB_MAGIC', use_syslib_magic)
 userconf.set10('HAVE_LIB_XXHASH', sys_xxhash.found())
 userconf.set10('USE_LIB_XXHASH', use_sys_xxhash)
 userconf.set10('DEBUGGER', has_debugger)
+userconf.set('ETCDIR', join_paths(r2_prefix, 'etc'))
 userconf.set('PREFIX', r2_prefix)
 if host_machine.system() == 'windows'
   userconf.set('LIBDIR', r2_libdir)
@@ -343,7 +351,7 @@ userconf.set10('HAVE_FORK', use_fork)
 userconf.set10('WANT_DYLINK', use_dylink)
 userconf.set10('HAVE_PTRACE', have_ptrace)
 userconf.set10('USE_PTRACE_WRAP', use_ptrace_wrap)
-userconf.set10('WITH_GPL', true)
+userconf.set10('WITH_GPL', not get_option('nogpl'))
 ok = cc.has_header_symbol('sys/personality.h', 'ADDR_NO_RANDOMIZE')
 userconf.set10('HAVE_DECL_ADDR_NO_RANDOMIZE', ok)
 
@@ -621,6 +629,7 @@ if cli_enabled
     subdir('binr/radiff2')
     subdir('binr/rafind2')
     subdir('binr/rasign2')
+    subdir('binr/rvc2')
     subdir('binr/rax2')
   endif
   subdir('binr/r2pm')
@@ -688,6 +697,7 @@ if cli_enabled
     'man/rarun2.1',
     'man/rasm2.1',
     'man/rax2.1',
+    'man/rvc2.1',
     'man/esil.7'
   )
 
@@ -708,5 +718,9 @@ if cli_enabled
     install_dir: r2_zsh_compdir
   )
 
-  meson.add_install_script(host_machine.system() == 'windows' ? 'sys/create_r2.bat' : 'sys/create_r2.sh')
+  if host_machine.system() == 'windows'
+    meson.add_install_script('sys/create_r2.bat')
+  else
+    meson.add_install_script('sys/create_r2.sh')
+  endif
 endif

@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2008-2019 nibble, pancake, inisider */
+/* radare - LGPL - Copyright 2008-2021 nibble, pancake, inisider */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,13 +171,13 @@ struct r_bin_pe_addr_t *PE_(check_msvcseh)(struct PE_(r_bin_pe_obj_t) *bin) {
 			// 5D                    pop ebp
 			// C3                    ret
 			follow_offset (entry, bin->b, b, sizeof (b), bin->big_endian, 8);
-			for (n = 0; n < sizeof (b) - 15; n++) {
+			for (n = 0; n + 16 < sizeof (b); n++) {
 				// E8 xx xx xx xx    call sub.ucrtbased.dll__register_thread_local_exe_atexit_callback
 				// 83 C4 04          add esp, 4
 				// E8 xx xx xx xx    call xxxxxxxx <- Follow this
 				// 89 xx xx          mov dword [xxxx], eax
 				// E8 xx xx xx xx    call xxxxxxxx
-				if (b[n] == 0xe8 && !memcmp (b + n + 5, "\x83\xc4\x04", 3) 
+				if (b[n] == 0xe8 && n + 8 <= sizeof (b) && !memcmp (b + n + 5, "\x83\xc4\x04", 3) 
 					&& b[n + 8] == 0xe8 && b[n + 13] == 0x89 && b[n + 16] == 0xe8) {
 					follow_offset (entry, bin->b, b, sizeof (b), bin->big_endian, n + 8);
 					int j, calls = 0;
@@ -236,11 +236,12 @@ struct r_bin_pe_addr_t *PE_(check_msvcseh)(struct PE_(r_bin_pe_obj_t) *bin) {
 			// 48 8B 54 24 30              mov rdx, qword [rsp + 0x30]
 			// 8B 4C 24 20                 mov ecx, dword [rsp + 0x20]
 			// E8 xx xx xx xx              call    main
-			for (n = 0; n < sizeof (b) - 13; n++) {
+			for (n = 0; n + 14 < sizeof (b); n++) {
 				if (b[n] == 0x4c && b[n + 3] == 0x48 && b[n + 6] == 0x8b && b[n + 8] == 0xe8) {
 					follow_offset (entry, bin->b, b, sizeof (b), bin->big_endian, n + 8);
 					return entry;
-				} else if (b[n] == 0x4c && b [n + 5] == 0x48 && b[n + 10] == 0x8b && b[n + 14] == 0xe8) {
+				}
+				if (b[n] == 0x4c && b [n + 5] == 0x48 && b[n + 10] == 0x8b && b[n + 14] == 0xe8) {
 					follow_offset (entry, bin->b, b, sizeof (b), bin->big_endian, n + 14);
 					return entry;
 				}

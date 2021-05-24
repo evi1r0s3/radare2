@@ -263,13 +263,6 @@ static bool cb_analgraphdepth(void *user, void *data) {
 	return true;
 }
 
-static bool cb_analafterjmp(void *user, void *data) {
-	RCore *core = (RCore*) user;
-	RConfigNode *node = (RConfigNode*) data;
-	core->anal->opt.afterjmp = node->i_value;
-	return true;
-}
-
 static bool cb_anal_delay(void *user, void *data) {
 	RCore *core = (RCore*) user;
 	RConfigNode *node = (RConfigNode*) data;
@@ -1218,6 +1211,7 @@ static bool cb_cfgcharset(void *user, void *data) {
 	RConfigNode *node = (RConfigNode*) data;
 	const char *cf = r_str_trim_head_ro (node->value);
 	if (!*cf) {
+		r_charset_close (core->print->charset);
 		return true;
 	}
 
@@ -1270,6 +1264,8 @@ static bool cb_cfgdebug(void *user, void *data) {
 	}
 	if (core->dbg && node->i_value) {
 		const char *dbgbackend = r_config_get (core->config, "dbg.backend");
+		r_config_set (core->config, "anal.in", "dbg.map");
+		r_config_set (core->config, "search.in", "dbg.map");
 		r_debug_use (core->dbg, dbgbackend);
 		if (!strcmp (r_config_get (core->config, "cmd.prompt"), "")) {
 			r_config_set (core->config, "cmd.prompt", ".dr*");
@@ -1386,7 +1382,9 @@ static bool cb_cmdpdc(void *user, void *data) {
 		RListIter *iter;
 		RCorePlugin *cp;
 		r_list_foreach (core->rcmd->plist, iter, cp) {
-			if (!strcmp (cp->name, "r2ghidra")) {
+			if (!strcmp (cp->name, "r2retdec")) {
+				r_cons_printf ("pdz\n");
+			} else if (!strcmp (cp->name, "r2ghidra")) {
 				r_cons_printf ("pdg\n");
 			}
 		}
@@ -1510,6 +1508,13 @@ static bool cb_dbg_maxsnapsize(void *user, void *data) {
 	RCore *core = (RCore*) user;
 	RConfigNode *node = (RConfigNode*) data;
 	core->dbg->maxsnapsize = r_num_math (core->num, node->value);
+	return true;
+}
+
+static bool cb_dbg_wrap(void *user, void *data) {
+	RCore *core = (RCore*) user;
+	RConfigNode *node = (RConfigNode*) data;
+	core->io->want_ptrace_wrap = node->i_value;
 	return true;
 }
 
@@ -2076,6 +2081,12 @@ static bool cb_io_cache_mode(void *user, void *data) {
 	return true;
 }
 
+static bool cb_io_cache_nodup(void *user, void *data) {
+	RCore *core = (RCore *)user;
+	RConfigNode *node = (RConfigNode *)data;
+	core->io->nodup = node->i_value;
+	return true;
+}
 static bool cb_io_cache_read(void *user, void *data) {
 	RCore *core = (RCore *)user;
 	RConfigNode *node = (RConfigNode *)data;
@@ -2227,6 +2238,13 @@ static bool cb_scrbreakword(void* user, void* data) {
 	return true;
 }
 
+static bool cb_scroptimize(void* user, void* data) {
+	RConfigNode *node = (RConfigNode*) data;
+	RCore *core = (RCore*) user;
+	core->cons->optimize = node->i_value;
+	return true;
+}
+
 static bool cb_scrcolumns(void* user, void* data) {
 	RConfigNode *node = (RConfigNode*) data;
 	RCore *core = (RCore*) user;
@@ -2252,9 +2270,8 @@ static bool cb_scrhtml(void *user, void *data) {
 }
 
 static bool cb_newshell(void *user, void *data) {
-	RConfigNode *node = (RConfigNode *)data;
-	RCore *core = (RCore *)user;
-	core->use_tree_sitter_r2cmd = node->i_value;
+	// uncommenting this will break 39 tests
+	// eprintf ("Warning: newshell has been temporarily disabled\n");
 	return true;
 }
 
@@ -3047,6 +3064,31 @@ static bool cb_dbg_verbose(void *user, void *data) {
 	return true;
 }
 
+static bool cb_prjvctype(void *user, void *data) {
+	RConfigNode *node = data;
+	char *p = r_file_path ("git");
+	bool found = (p && (*p == 'g' ||*p == '/'));
+	free (p);
+	if (*node->value == '?') {
+		if (found) {
+			r_cons_println ("git");
+		}
+		r_cons_println ("rvc");
+		return true;
+	}
+	if (!strcmp (node->value, "git")) {
+		if (found) {
+			return true;
+		}
+		return false;
+	}
+	if (!strcmp (node->value, "rvc")) {
+		return true;
+	}
+	eprintf ("Unknown vc %s\n", node->value);
+	return true;
+}
+
 R_API int r_core_config_init(RCore *core) {
 	int i;
 	char buf[128], *p, *tmpdir;
@@ -3126,7 +3168,6 @@ R_API int r_core_config_init(RCore *core) {
 	SETICB ("anal.jmp.tailcall", 0, &cb_anal_jmptailcall, "Consume a branch as a call if delta is big");
 
 	SETCB ("anal.armthumb", "false", &cb_analarmthumb, "aae computes arm/thumb changes (lot of false positives ahead)");
-	SETCB ("anal.jmp.after", "true", &cb_analafterjmp, "Continue analysis after jmp/ujmp");
 	SETCB ("anal.endsize", "true", &cb_anal_endsize, "Adjust function size at the end of the analysis (known to be buggy)");
 	SETCB ("anal.delay", "true", &cb_anal_delay, "Enable delay slot analysis if supported by the architecture");
 	SETICB ("anal.depth", 64, &cb_analdepth, "Max depth at code analysis"); // XXX: warn if depth is > 50 .. can be problematic
@@ -3238,6 +3279,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETBPREF ("asm.hint.call", "true", "Show call hints [numbers] in disasm");
 	SETBPREF ("asm.hint.call.indirect", "true", "Hints for indirect call intructions go to the call destination");
 	SETBPREF ("asm.hint.lea", "false", "Show LEA hints [numbers] in disasm");
+	SETBPREF ("asm.hint.imm", "false", "Show immediate hints [numbers] in disasm");
 	SETBPREF ("asm.hint.emu", "false", "Show asm.emu hints [numbers] in disasm");
 	SETBPREF ("asm.hint.cdiv", "false", "Show CDIV hints optimization hint");
 	SETI ("asm.hint.pos", 1, "Shortcut hint position (-1, 0, 1)");
@@ -3418,12 +3460,7 @@ R_API int r_core_config_init(RCore *core) {
 	/* prj */
 	SETCB ("prj.name", "", &cb_prjname, "Name of current project");
 	SETBPREF ("prj.files", "false", "Save the target binary inside the project directory");
-	{
-		char *p = r_file_path ("git");
-		bool found = (p && *p == '/');
-		SETBPREF ("prj.git", r_str_bool (found), "Use git to share your project and version changes");
-		free (p);
-	}
+	SETBPREF ("prj.vc", "true", "Use your version control system of choice (rvc, git) to manage projects");
 	SETBPREF ("prj.zip", "false", "Use ZIP format for project files");
 	SETBPREF ("prj.gpg", "false", "TODO: Encrypt project with GnuPGv2");
 
@@ -3522,7 +3559,7 @@ R_API int r_core_config_init(RCore *core) {
 		free (path);
 	}
 	SETCB ("dir.source", "", &cb_dirsrc, "Path to find source files");
-	SETPREF ("dir.types", "/usr/include", "Default path to look for cparse type files");
+	SETPREF ("dir.types", "/usr/include", "Default colon-separated list of paths to find C headers to cparse types");
 	SETPREF ("dir.libs", "", "Specify path to find libraries to load when bin.libs=true");
 	p = r_sys_getenv (R_SYS_HOME);
 	SETCB ("dir.home", r_str_get_fail (p, "/"), &cb_dirhome, "Path for the home directory");
@@ -3543,6 +3580,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETI ("stack.delta", 0,  "Delta for the stack dump");
 
 	SETCB ("dbg.maxsnapsize", "32M", &cb_dbg_maxsnapsize, "Dont make snapshots of maps bigger than a specific size");
+	SETCB ("dbg.wrap", "false", &cb_dbg_wrap, "Enable the ptrace-wrap abstraction layer (needed for debugging from iaito)");
 	SETCB ("dbg.libs", "", &cb_dbg_libs, "If set stop when loading matching libname");
 	SETBPREF ("dbg.skipover", "false", "Make dso perform a dss (same goes for esil and visual/graph");
 	SETI ("dbg.hwbp", 0, "Set HW or SW breakpoints");
@@ -3815,6 +3853,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETCB ("scr.gadgets", "true", &cb_scr_gadgets, "Run pg in prompt, visual and panels");
 	SETBPREF ("scr.panelborder", "false", "Specify panels border active area (0 by default)");
 	SETICB ("scr.columns", 0, &cb_scrcolumns, "Force console column count (width)");
+	SETICB ("scr.optimize", 0, &cb_scroptimize, "Optimize the amount of ansi escapes and spaces (0, 1, 2 passes)");
 	SETBPREF ("scr.dumpcols", "false", "Prefer pC commands before p ones");
 	SETCB ("scr.rows", "0", &cb_scrrows, "Force console row count (height) ");
 	SETICB ("scr.rows", 0, &cb_rows, "Force console row count (height) (duplicate?)");
@@ -3900,6 +3939,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETCB ("io.cache", "false", &cb_io_cache, "Change both of io.cache.{read,write}");
 	SETCB ("io.cache.auto", "false", &cb_io_cache_mode, "Automatic cache all reads in the IO backend");
 	SETCB ("io.cache.read", "false", &cb_io_cache_read, "Enable read cache for vaddr (or paddr when io.va=0)");
+	SETCB ("io.cache.nodup", "false", &cb_io_cache_nodup, "Do not cache duplicated cache writes");
 	SETCB ("io.cache.write", "false", &cb_io_cache_write, "Enable write cache for vaddr (or paddr when io.va=0)");
 	SETCB ("io.pcache", "false", &cb_iopcache, "io.cache for p-level");
 	SETCB ("io.pcache.write", "false", &cb_iopcachewrite, "Enable write-cache");
@@ -3959,7 +3999,17 @@ R_API int r_core_config_init(RCore *core) {
 	SETI ("lines.from", 0, "Start address for line seek");
 	SETCB ("lines.to", "$s", &cb_linesto, "End address for line seek");
 	SETCB ("lines.abs", "false", &cb_linesabs, "Enable absolute line numbers");
-
+	/* RVC */
+	{
+		char *p = r_file_path ("git");
+		bool found = (p && *p == 'g');
+		if (!found) {
+			SETCB ("prj.vc.type", "git", &cb_prjvctype, "What should projects use as a vc");
+		} else {
+			//SETCB ("prj.vc.type", "rvc", &cb_prjvctype, "What should projects use as a vc"); //l8er
+		}
+		free (p);
+	}
 	r_config_lock (cfg, true);
 	return true;
 }

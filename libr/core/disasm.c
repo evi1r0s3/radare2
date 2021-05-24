@@ -149,6 +149,7 @@ typedef struct {
 	bool asm_hint_call;
 	bool asm_hint_call_indirect;
 	bool asm_hint_lea;
+	bool asm_hint_imm;
 	bool asm_hint_emu;
 	int  asm_hint_pos;
 	ut64 emuptr;
@@ -386,11 +387,8 @@ static void ds_print_ref_lines(char *line, char *line_col, RDisasmState *ds) {
 					r_cons_printf (" ");
 					continue;
 				}
-				if (line_col[i] == 'd') {
-					r_cons_printf ("%s%s%s", COLOR (ds, color_flow), get_utf8_char (line[i], ds), COLOR_RESET (ds));
-				} else	{
-					r_cons_printf ("%s%s%s", COLOR (ds, color_flow2), get_utf8_char (line[i], ds), COLOR_RESET (ds));
-				}
+				const char *flow_tint = (line_col[i] == 'd')? COLOR (ds, color_flow): COLOR (ds, color_flow2);
+				r_cons_printf ("%s%s%s", flow_tint, get_utf8_char (line[i], ds), COLOR_RESET (ds));
 			}
 		} else {
 			len = strlen (line);
@@ -405,11 +403,8 @@ static void ds_print_ref_lines(char *line, char *line_col, RDisasmState *ds) {
 					r_cons_printf (" ");
 					continue;
 				}
-				if (line_col[i] == 'd') {
-					r_cons_printf ("%s%c%s", COLOR (ds, color_flow), line[i], COLOR_RESET (ds));
-				} else	{
-					r_cons_printf ("%s%c%s", COLOR (ds, color_flow2), line[i], COLOR_RESET (ds));
-				}
+				const char *flow_tint = (line_col[i] == 'd')? COLOR (ds, color_flow): COLOR (ds, color_flow2);
+				r_cons_printf ("%s%c%s", flow_tint, line[i], COLOR_RESET (ds));
 			}
 		} else {
 			r_cons_printf ("%s", line);
@@ -444,9 +439,12 @@ R_API const char *r_core_get_section_name(RCore *core, ut64 addr) {
 	}
 	if (r_config_get_b (core->config, "cfg.debug")) {
 		char *rv = r_core_cmd_strf (core, "dmi.@0x%08"PFMT64x, addr);
-		r_str_replace_char (rv, '\n', ' ');
-		r_str_ncpy (section, rv, sizeof (section) - 1);
-		return section;
+		if (rv) {
+			r_str_replace_char (rv, '\n', ' ');
+			r_str_ncpy (section, rv, sizeof (section) - 1);
+			return section;
+		}
+		return NULL;
 	}
 	RBinObject *bo = r_bin_cur_object (core->bin);
 	RBinSection *s = bo? r_bin_get_section_at (bo, addr, core->io->va): NULL;
@@ -728,6 +726,7 @@ static RDisasmState * ds_init(RCore *core) {
 	ds->asm_hint_call = r_config_get_i (core->config, "asm.hint.call");
 	ds->asm_hint_call_indirect = r_config_get_i (core->config, "asm.hint.call.indirect");
 	ds->asm_hint_lea = r_config_get_i (core->config, "asm.hint.lea");
+	ds->asm_hint_imm = r_config_get_i (core->config, "asm.hint.imm");
 	ds->asm_hint_emu = r_config_get_i (core->config, "asm.hint.emu");
 	ds->asm_hint_cdiv = r_config_get_i (core->config, "asm.hint.cdiv");
 	ds->asm_hint_pos = r_config_get_i (core->config, "asm.hint.pos");
@@ -2057,6 +2056,7 @@ static void ds_print_pre(RDisasmState *ds, bool fcnline) {
 	RListIter *iter;
 	r_list_foreach (list, iter, bb) {
 		if (bb->color.r || bb->color.g || bb->color.b) {
+			free (kolor);
 			kolor = r_cons_rgb_str (NULL, -1, &bb->color);
 			break;
 		}
@@ -3586,6 +3586,12 @@ static bool ds_print_core_vmode(RDisasmState *ds, int pos) {
 	case R_ANAL_OP_TYPE_MOV:
 	case R_ANAL_OP_TYPE_LEA:
 	case R_ANAL_OP_TYPE_LOAD:
+		if (ds->asm_hint_imm) {
+			if (ds->analop.val != UT64_MAX && ds->analop.val != UT32_MAX && ds->analop.val > 256) {
+				slen = ds_print_shortcut (ds, ds->analop.val, pos);
+				gotShortcut = true;
+			}
+		} else
 		if (ds->asm_hint_lea) {
 			if (ds->analop.ptr != UT64_MAX && ds->analop.ptr != UT32_MAX && ds->analop.ptr > 256) {
 				slen = ds_print_shortcut (ds, ds->analop.ptr, pos);
@@ -5421,13 +5427,13 @@ toro:
 		if (ds->midbb) {
 			skip_bytes_bb = handleMidBB(core, ds);
 		}
-		ds_show_xrefs (ds);
 		ds_show_flags (ds, false);
+		ds_show_xrefs (ds);
 		if (skip_bytes_flag && ds->midflags == R_MIDFLAGS_SHOW &&
 				(!ds->midbb || !skip_bytes_bb || skip_bytes_bb > skip_bytes_flag)) {
 			ds->at += skip_bytes_flag;
-			ds_show_xrefs(ds);
 			ds_show_flags(ds, true);
+			ds_show_xrefs(ds);
 			ds->at -= skip_bytes_flag;
 		}
 		if (ds->pdf) {
@@ -5786,8 +5792,9 @@ toro:
 			} else if (ds->immtrim) {
 				free (ds->opstr);
 				ds->opstr = strdup (r_asm_op_get_asm (&ds->asmop));
-				char *res = r_parse_immtrim (ds->opstr);
+				char *res = r_parse_immtrim (strdup (ds->opstr));
 				if (res) {
+					free (ds->opstr);
 					ds->opstr = res;
 				}
 			} else if (ds->use_esil) {
@@ -6140,6 +6147,21 @@ R_API int r_core_print_disasm_json(RCore *core, ut64 addr, ut8 *buf, int nb_byte
 		// wanted the numerical values of the type information
 		pj_kn (pj, "type_num", (ut64)(ds->analop.type & UT64_MAX));
 		pj_kn (pj, "type2_num", (ut64)(ds->analop.type2 & UT64_MAX));
+		// addr addrline info here
+		{
+			int line;
+			char file[1024];
+			bool ret = r_bin_addr2line (core->bin, at, file, sizeof (file) - 1, &line);
+			if (!ret) {
+				ret = r_bin_addr2line2 (core->bin, at, file, sizeof (file) - 1, &line);
+			}
+			if (ret) {
+				pj_ko (pj, "addrline");
+				pj_ks (pj, "file", file);
+				pj_kn (pj, "line", line);
+				pj_end (pj);
+			}
+		}
 		// handle switch statements
 		if (ds->analop.switch_op && r_list_length (ds->analop.switch_op->cases) > 0) {
 			// XXX - the java caseop will still be reported in the assembly,

@@ -1,14 +1,62 @@
+NAME=rafind2 -s 1234 -X -b 0x100
+FILE=--
+CMDS=!rafind2 -s 1234 -X -b 0x100 bins/other/search.bin
+EXPECT=<<EOF
+0xfe
+[35m- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+[0m[32m0x000000fe[0m  [35m31[0m[35m32[0m [35m33[0m[35m34[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [35m1[0m[35m2[0m[35m3[0m[35m4[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+[32m0x0000010e[0m  [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+[32m0x0000011e[0m  [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+[32m0x0000012e[0m  [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+EOF
+RUN
+
+NAME=rafind2 -s 1234 -X -b 0x100
+FILE=--
+CMDS=!rafind2 -c -s 1234 -X -b 8 bins/other/search.bin
+EXPECT=<<EOF
+0xfe
+- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x000000fe  3132 3334 0000 0000                      1234....
+EOF
+RUN
+
+NAME=rafind2 -s 1234 -X -b 0x100
+FILE=--
+CMDS=!rafind2 -c -s 1234 -X -b 0x100 bins/other/search.bin
+EXPECT=<<EOF
+0xfe
+- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x000000fe  3132 3334 0000 0000 0000 0000 0000 0000  1234............
+0x0000010e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+0x0000011e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+0x0000012e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+EOF
+RUN
+
+NAME=rafind2 -s 1234 -X
+FILE=--
+CMDS=!rafind2 -cq -s 1234 -X bins/other/search.bin
+EXPECT=<<EOF
+0xfe
+- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x000000fe  3132 3334 0000 0000 0000 0000 0000 0000  1234............
+0x0000010e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+0x0000011e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+0x0000012e  0000 0000 0000 0000 0000 0000 0000 0000  ................
+EOF
+RUN
+
 NAME=rafind2 -X -s
 FILE=-
-CMDS=!rafind2 -X -s 250382 bins/elf/ioli/crackme0x00
+CMDS=!rafind2 -cX -s 250382 bins/elf/ioli/crackme0x00
 EXPECT=<<EOF
 0x58f
-[35m- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
-[0m[32m0x0000058f[0m  [35m32[0m[35m35[0m [35m30[0m[35m33[0m [35m38[0m[35m32[0m [32m00[0m[35m49[0m [35m6e[0m[35m76[0m [35m61[0m[35m6c[0m [35m69[0m[35m64[0m [35m20[0m[35m50[0m  [35m2[0m[35m5[0m[35m0[0m[35m3[0m[35m8[0m[35m2[0m[32m.[0m[35mI[0m[35mn[0m[35mv[0m[35ma[0m[35ml[0m[35mi[0m[35md[0m[35m [0m[35mP[0m
-[32m0x0000059f[0m  [35m61[0m[35m73[0m [35m73[0m[35m77[0m [35m6f[0m[35m72[0m [35m64[0m[35m21[0m [37m0a[0m[32m00[0m [35m50[0m[35m61[0m [35m73[0m[35m73[0m [35m77[0m[35m6f[0m  [35ma[0m[35ms[0m[35ms[0m[35mw[0m[35mo[0m[35mr[0m[35md[0m[35m![0m[37m.[0m[32m.[0m[35mP[0m[35ma[0m[35ms[0m[35ms[0m[35mw[0m[35mo[0m
-[32m0x000005af[0m  [35m72[0m[35m64[0m [35m20[0m[35m4f[0m [35m4b[0m[35m20[0m [35m3a[0m[35m29[0m [37m0a[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [35mr[0m[35md[0m[35m [0m[35mO[0m[35mK[0m[35m [0m[35m:[0m[35m)[0m[37m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
-[32m0x000005bf[0m  [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m  [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
-[32m0x000005cf[0m  [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m [32m00[0m[32m00[0m       [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+- offset -   0 1  2 3  4 5  6 7  8 9  A B  C D  E F  0123456789ABCDEF
+0x0000058f  3235 3033 3832 0049 6e76 616c 6964 2050  250382.Invalid P
+0x0000059f  6173 7377 6f72 6421 0a00 5061 7373 776f  assword!..Passwo
+0x000005af  7264 204f 4b20 3a29 0a00 0000 0000 0000  rd OK :)........
+0x000005bf  0000 0000 0000 0000 0000 0000 0000 0000  ................
 EOF
 RUN
 
@@ -16,7 +64,7 @@ NAME=rafind2 -r -X -s
 FILE=-
 CMDS=!rafind2 -r -X -s 250382 bins/elf/ioli/crackme0x00
 EXPECT=<<EOF
-f hit0_0 0x0000058f ; bins/elf/ioli/crackme0x00
+f hit0_0 = 0x0000058f # bins/elf/ioli/crackme0x00
 EOF
 RUN
 
@@ -24,7 +72,7 @@ NAME=rafind2 -f 0x00000000 -t 0x00000590 -r -X -s
 FILE=-
 CMDS=!rafind2 -f 0x00000000 -t 0x00001000 -r -X -s 250382 bins/elf/ioli/crackme0x00
 EXPECT=<<EOF
-f hit0_0 0x0000058f ; bins/elf/ioli/crackme0x00
+f hit0_0 = 0x0000058f # bins/elf/ioli/crackme0x00
 EOF
 RUN
 
@@ -39,7 +87,7 @@ NAME=rafind2 -r -X -x
 FILE=-
 CMDS=!rafind2 -r -X -x 323530333832 bins/elf/ioli/crackme0x00
 EXPECT=<<EOF
-f hit0_0 0x0000058f ; bins/elf/ioli/crackme0x00
+f hit0_0 = 0x0000058f # bins/elf/ioli/crackme0x00
 EOF
 RUN
 
@@ -47,7 +95,7 @@ NAME=rafind2 -r -X -x with nibbles masked
 FILE=-
 CMDS=!rafind2 -r -X -x caf.bab. bins/java/Hello.class
 EXPECT=<<EOF
-f hit0_0 0x00000000 ; bins/java/Hello.class
+f hit0_0 = 0x00000000 # bins/java/Hello.class
 EOF
 RUN
 
@@ -55,7 +103,7 @@ NAME=rafind2 -r -X -x with bin mask
 FILE=-
 CMDS=!rafind2 -r -X -x caf3bab3 -M fff0fff0 bins/java/Hello.class
 EXPECT=<<EOF
-f hit0_0 0x00000000 ; bins/java/Hello.class
+f hit0_0 = 0x00000000 # bins/java/Hello.class
 EOF
 RUN
 
@@ -192,6 +240,81 @@ FILE=-
 CMDS=!rafind2 -Z -s 250382 bins/elf/ioli/crackme0x00
 EXPECT=<<EOF
 0x58f 250382
+EOF
+RUN
+
+NAME=rafind2 multiple files
+FILE=-
+CMDS=!rafind2 -s README bins/arm/README bins/arm/README
+EXPECT=<<EOF
+bins/arm/README: 0x0
+bins/arm/README: 0x0
+EOF
+RUN
+
+NAME=rafind2 recursive
+FILE=-
+CMDS=!rafind2 -q -s README bins/arm
+EXPECT=<<EOF
+0x0
+EOF
+RUN
+
+NAME=rafind2 json
+FILE=-
+CMDS=!rafind2 -j -s README bins/arm/README
+EXPECT=<<EOF
+[{"file":"bins/arm/README","offset":0,"type":"string","data":"README"}]
+EOF
+RUN
+
+NAME=rafind2 regexp
+FILE=-
+CMDS=!rafind2 -e /R.A..E/ bins/arm/README
+EXPECT=<<EOF
+0x0
+EOF
+RUN
+
+NAME=rafind2 regexp json
+FILE=-
+CMDS=!rafind2 -j -e /R.A..E/ bins/arm/README
+EXPECT=<<EOF
+[{"file":"bins/arm/README","offset":0,"type":"string","data":"README"}]
+EOF
+RUN
+
+NAME=rafind2 multiple strings
+FILE=-
+CMDS=!rafind2 -s README -s This bins/arm/README
+EXPECT=<<EOF
+0x0
+0xf
+EOF
+RUN
+
+NAME=rafind2 multiple strings json
+FILE=-
+CMDS=!rafind2 -j -s README -s This bins/arm/README
+EXPECT=<<EOF
+[{"file":"bins/arm/README","offset":0,"type":"string","data":"README"},{"file":"bins/arm/README","offset":15,"type":"string","data":"This directory contains binaries for tests on the arm architecture. So far the"}]
+EOF
+RUN
+
+NAME=rafind2 multiple regexps
+FILE=-
+CMDS=!rafind2 -e /R....E/ -e /Th.s/ bins/arm/README
+EXPECT=<<EOF
+0x0
+0xf
+EOF
+RUN
+
+NAME=rafind2 multiple regexps json
+FILE=-
+CMDS=!rafind2 -j -e /R....E/ -e /Th.s/ bins/arm/README
+EXPECT=<<EOF
+[{"file":"bins/arm/README","offset":0,"type":"string","data":"README"},{"file":"bins/arm/README","offset":15,"type":"string","data":"This directory contains binaries for tests on the arm architecture. So far the"}]
 EOF
 RUN
 

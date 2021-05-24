@@ -20,12 +20,14 @@ control_c() {
 trap control_c 2
 DEBUGGER=1
 USE_MAGIC=0
-CSNEXT=0
 LOADLIBS=1
 WANT_DYLINK=1
 HAVE_FORK=1
 WANT_PTRACE_WRAP=1
+WANT_GPERF=1
 WITH_LIBR=0
+USE_CS5=0
+USE_CS4=0
 WITH_CAPSTONE=0
 USE_ZIP=0
 USE_XXHASH=0
@@ -129,12 +131,12 @@ done
 : ${INSTALL_PROGRAM_STRIP:=${INSTALL} -m 755 -s}
 : ${INSTALL_MAN:=${INSTALL} -m 444}
 : ${INSTALL_LIB:=${INSTALL} -m 755 -c}
- PKGNAME='radare2' ; VERSION='5.2.0-git' ; VERSION_MAJOR=5; VERSION_MINOR=2; VERSION_PATCH=0; VERSION_NUMBER=50200; CONTACT_MAIL="pancake@nopcode.org" ; CONTACT_NAME="pancake" ; CONTACT="pancake <pancake@nopcode.org>" ;
+ PKGNAME='radare2' ; VERSION='5.3.0-git' ; VERSION_MAJOR=5; VERSION_MINOR=3; VERSION_PATCH=0; VERSION_NUMBER=50300; CONTACT_MAIL="pancake@nopcode.org" ; CONTACT_NAME="pancake" ; CONTACT="pancake <pancake@nopcode.org>" ;
 }
 
 show_usage() {
 cat <<EOF2
-'configure' configures radare2-5.2.0-git to adapt to many kinds of systems.
+'configure' configures radare2-5.3.0-git to adapt to many kinds of systems.
 
 Usage: ./configure [OPTION]... [VAR=VALUE]...
 
@@ -180,12 +182,14 @@ printf "
 Optional Features:
   --disable-debugger     disable native debugger features
   --with-sysmagic        force to use system's magic
-  --with-capstone5       build next branch of the capstone repository
   --disable-loadlibs     disable loading plugins
   --without-dylink       disable support for dynamic loading of plugins
   --without-fork         disable fork
-  --without-ptrace-wrap  disable ptrace-wrap build
+  --without-ptrace-wrap  build ptrace-wrap support needed for the iaito debugger on Linux
+  --without-gperf        do not statically link the sdb databases even if gperf is found
   --with-libr            build libr.a and libr.dylib
+  --with-capstone5       build next branch of capstone5 (default)
+  --with-capstone4       build v4 branch of capstone
   --with-syscapstone     force to use system-wide capstone
   --with-syszip          force to use system's libzip and zlib
   --with-sysxxhash       force to use system's xxhash
@@ -234,10 +238,10 @@ ocho() {
 
 show_version() {
 if [ "$QUIET" = 1 ]; then
-	echo "5.2.0-git"
+	echo "5.3.0-git"
 	exit 0
 fi
-echo "radare2-5.2.0-git configuration script done with acr v1.9.8.
+echo "radare2-5.3.0-git configuration script done with acr v1.9.8.
 The 'Free Software Foundation' message is only for autodetection.
 Originally written by pancake <nopcode.org>."
 exit 0
@@ -266,12 +270,12 @@ case $flag in
 	show_version ; ;;
 -r|--r|--report)
 echo "PKGNAME:   radare2"
-echo "VERSION:   5.2.0-git"
+echo "VERSION:   5.3.0-git"
 echo "LANGS:     c"
 echo "REQUIRED:  libdl"
 echo "OPTIONAL:  libmagic libz libzip libxxhash libssl liblibuv>=1.0.0"
 echo "PKG-CONFIG:  capstone openssl libuv"
-echo "FLAGS:     --disable-debugger --with-sysmagic --with-capstone5 --disable-loadlibs --without-dylink --without-fork --without-ptrace-wrap --with-libr --with-syscapstone --with-syszip --with-sysxxhash --without-gpl --with-openssl --without-libuv --with-rpath --with-compiler=gcc --with-ostype=auto --with-libversion=xxx --without-jemalloc --with-checks-level=2"
+echo "FLAGS:     --disable-debugger --with-sysmagic --disable-loadlibs --without-dylink --without-fork --without-ptrace-wrap --without-gperf --with-libr --with-capstone5 --with-capstone4 --with-syscapstone --with-syszip --with-sysxxhash --without-gpl --with-openssl --without-libuv --with-rpath --with-compiler=gcc --with-ostype=auto --with-libversion=xxx --without-jemalloc --with-checks-level=2"
 	exit 0
 	;;
 --cache-file)
@@ -323,12 +327,14 @@ echo "FLAGS:     --disable-debugger --with-sysmagic --with-capstone5 --disable-l
 
 "--disable-debugger") DEBUGGER="0"; ;;
 "--with-sysmagic") USE_MAGIC="1"; ;;
-"--with-capstone5") CSNEXT="1"; ;;
 "--disable-loadlibs") LOADLIBS="0"; ;;
 "--without-dylink") WANT_DYLINK="0"; ;;
 "--without-fork") HAVE_FORK="0"; ;;
 "--without-ptrace-wrap") WANT_PTRACE_WRAP="0"; ;;
+"--without-gperf") WANT_GPERF="0"; ;;
 "--with-libr") WITH_LIBR="1"; ;;
+"--with-capstone5") USE_CS5="1"; ;;
+"--with-capstone4") USE_CS4="1"; ;;
 "--with-syscapstone") WITH_CAPSTONE="1"; ;;
 "--with-syszip") USE_ZIP="1"; ;;
 "--with-sysxxhash") USE_XXHASH="1"; ;;
@@ -358,7 +364,7 @@ parse_options "$1"
 shift
 done
 
-ENVWORDS="MANDIR INFODIR LIBDIR INCLUDEDIR LOCALSTATEDIR ETCDIR SYSCONFDIR DATADIR DOCDIR LIBEXECDIR SBINDIR BINDIR EPREFIX PREFIX SPREFIX TARGET HOST BUILD INSTALL INSTALL_LIB INSTALL_MAN INSTALL_PROGRAM INSTALL_PROGRAM_STRIP INSTALL_DIR INSTALL_SCRIPT INSTALL_DATA HOST_OS HOST_CPU BUILD_OS BUILD_CPU TARGET_OS TARGET_CPU VERSION VERSION_MAJOR VERSION_MINOR VERSION_PATCH VERSION_NUMBER PKGNAME VPATH CONTACT CONTACT_NAME CONTACT_MAIL CC CFLAGS CPPFLAGS LDFLAGS HAVE_LANG_C DEBUGGER HAVE_LIB_DL DL_LIBS PKGCONFIG HAVE_PATCH PATCH HAVE_GIT GIT HAVE_LIB_MAGIC USE_MAGIC USE_LIB_MAGIC LIBMAGIC CSNEXT LOADLIBS WANT_DYLINK HAVE_FORK WANT_PTRACE_WRAP WITH_LIBR WITH_CAPSTONE CAPSTONE_CFLAGS CAPSTONE_LDFLAGS HAVE_PKGCFG_CAPSTONE USE_CAPSTONE HAVE_LIB_Z HAVE_LIB_ZIP USE_ZIP USE_LIB_ZIP LIBZIP HAVE_LIB_XXHASH USE_XXHASH USE_LIB_XXHASH LIBXXHASH WITH_GPL HAVE_DECL_ADDR_NO_RANDOMIZE HAVE_DECL___GLIBC__ HAVE_ARC4RANDOM_UNIFORM HAVE_EXPLICIT_BZERO HAVE_EXPLICIT_MEMSET HAVE_CLOCK_NANOSLEEP HAVE_SIGACTION HAVE_CLOCK_GETTIME CLOCK_LDFLAGS SUPPORT_GNU99 NEWSHELL_CFLAGS SUPPORT_C99 HAVE_LIB_GMP HAVE_LIB_SSL SSL_CFLAGS SSL_LDFLAGS HAVE_PKGCFG_OPENSSL HAVE_OPENSSL WANT_OPENSSL HAVE_LIBUV_VERSION_1_0_0 LIBUV_CFLAGS LIBUV_LDFLAGS HAVE_PKGCFG_LIBUV HAVE_LIBUV WANT_LIBUV USE_RPATH USERCC USEROSTYPE LIBVERSION HAVE_JEMALLOC HAVE_PTRACE USE_PTRACE_WRAP R_CHECKS_LEVEL"
+ENVWORDS="MANDIR INFODIR LIBDIR INCLUDEDIR LOCALSTATEDIR ETCDIR SYSCONFDIR DATADIR DOCDIR LIBEXECDIR SBINDIR BINDIR EPREFIX PREFIX SPREFIX TARGET HOST BUILD INSTALL INSTALL_LIB INSTALL_MAN INSTALL_PROGRAM INSTALL_PROGRAM_STRIP INSTALL_DIR INSTALL_SCRIPT INSTALL_DATA HOST_OS HOST_CPU BUILD_OS BUILD_CPU TARGET_OS TARGET_CPU VERSION VERSION_MAJOR VERSION_MINOR VERSION_PATCH VERSION_NUMBER PKGNAME VPATH CONTACT CONTACT_NAME CONTACT_MAIL CC CFLAGS CPPFLAGS LDFLAGS HAVE_LANG_C DEBUGGER HAVE_LIB_DL DL_LIBS PKGCONFIG HAVE_PATCH PATCH HAVE_GIT GIT HAVE_GPERF GPERF HAVE_LIB_MAGIC USE_MAGIC USE_LIB_MAGIC LIBMAGIC LOADLIBS WANT_DYLINK HAVE_FORK WANT_PTRACE_WRAP WANT_GPERF WITH_LIBR USE_CS5 USE_CS4 WITH_CAPSTONE CAPSTONE_CFLAGS CAPSTONE_LDFLAGS HAVE_PKGCFG_CAPSTONE USE_CAPSTONE HAVE_LIB_Z HAVE_LIB_ZIP USE_ZIP USE_LIB_ZIP LIBZIP HAVE_LIB_XXHASH USE_XXHASH USE_LIB_XXHASH LIBXXHASH WITH_GPL HAVE_DECL_ADDR_NO_RANDOMIZE HAVE_DECL___GLIBC__ HAVE_ARC4RANDOM_UNIFORM HAVE_EXPLICIT_BZERO HAVE_EXPLICIT_MEMSET HAVE_CLOCK_NANOSLEEP HAVE_SIGACTION HAVE_CLOCK_GETTIME CLOCK_LDFLAGS SUPPORT_GNU99 HAVE_LIB_GMP HAVE_LIB_SSL SSL_CFLAGS SSL_LDFLAGS HAVE_PKGCFG_OPENSSL HAVE_OPENSSL WANT_OPENSSL HAVE_LIBUV_VERSION_1_0_0 LIBUV_CFLAGS LIBUV_LDFLAGS HAVE_PKGCFG_LIBUV HAVE_LIBUV WANT_LIBUV USE_RPATH USERCC USEROSTYPE LIBVERSION HAVE_JEMALLOC HAVE_PTRACE USE_PTRACE_WRAP R_CHECKS_LEVEL"
 
 create_environ
 
@@ -482,6 +488,32 @@ echo "Cannot find git" >&2
 else
 echo no
 fi ; fi
+ochof "checking for gperf... "
+if [ -x "${GPERF}" ]; then
+	FIND=${GPERF}
+else
+	FIND=""
+	IFS=:
+	for A in ${PATH} ; do
+		if [ -x "${A}/gperf" ]; then
+			FIND="${A}/gperf"
+			break;
+		fi
+	done
+	unset IFS
+fi
+if [ -n "${FIND}" ]; then
+	ocho ${FIND};
+HAVE_GPERF=1
+	GPERF=${FIND}
+else
+	HAVE_GPERF=0
+	GPERF=gperf
+if [ "" = 1 ]; then
+echo "Cannot find gperf" >&2
+else
+echo no
+fi ; fi
 check_library() {
 VAR=$1
 S="$"
@@ -513,6 +545,8 @@ LIBMAGIC="-lmagic"
 else
 USE_LIB_MAGIC="0"
 LIBMAGIC=""; fi
+if [ "$WANT_GPERF" = "0" ]; then
+HAVE_GPERF="0"; fi
 if [ "$WITH_CAPSTONE" = "1" ]; then
 if [ -z "${PKGCONFIG}" ]; then pkg-config --version >/dev/null 2>&1 ; if [ 0 = 0 ]; then PKGCONFIG=pkg-config ; else PKGCONFIG=pkgconf ; fi; fi
 type ${PKGCONFIG} > /dev/null 2>&1 || echo "ERROR: Cannot find valid PKGCONFIG, pkg-config or pkgconf in PATH"
@@ -621,18 +655,6 @@ if [ $? = 0 ]; then
 	echo yes ; SUPPORT_GNU99=1
 else
 	SUPPORT_GNU99=0 ; echo no ; fi
-if [ "$SUPPORT_GNU99" = "1" ]; then
-NEWSHELL_CFLAGS="${NEWSHELL_CFLAGS} '-std=gnu99'"
-else
-printf "checking cflags  -std=c99... "
-echo "int main(int ac, char **av){ return 0; }" > .test.c
-${CC}  -std=c99 ${CFLAGS} ${CPPFLAGS} ${LDFLAGS}  -std=c99 .test.c >/dev/null 2>&1
-if [ $? = 0 ]; then
-	echo yes ; SUPPORT_C99=1
-else
-	SUPPORT_C99=0 ; echo no ; fi
-if [ "$SUPPORT_C99" = "1" ]; then
-NEWSHELL_CFLAGS="${NEWSHELL_CFLAGS} '-std=c99'"; fi; fi
 HAVE_LIB_GMP="0"
 check_library HAVE_LIB_SSL ssl 0
 if [ -z "${PKGCONFIG}" ]; then pkg-config --version >/dev/null 2>&1 ; if [ 0 = 0 ]; then PKGCONFIG=pkg-config ; else PKGCONFIG=pkgconf ; fi; fi
@@ -804,7 +826,7 @@ do_remove
 if [ "$QUIET" = 0 ]; then
 echo
 echo "Final report:"
-for A in  R_CHECKS_LEVEL PREFIX HAVE_LIB_GMP HAVE_OPENSSL HAVE_LIBUV USE_CAPSTONE HAVE_PTRACE USE_PTRACE_WRAP HAVE_FORK VERSION USE_LIB_ZIP USE_LIB_MAGIC USE_LIB_XXHASH DEBUGGER CC USERCC HAVE_ARC4RANDOM_UNIFORM PKGCONFIG HAVE_EXPLICIT_BZERO HAVE_EXPLICIT_MEMSET WANT_DYLINK USEROSTYPE LIBVERSION BUILD HOST TARGET CFLAGS LDFLAGS ; do
+for A in  R_CHECKS_LEVEL PREFIX HAVE_LIB_GMP HAVE_OPENSSL HAVE_LIBUV USE_CAPSTONE HAVE_PTRACE USE_PTRACE_WRAP HAVE_FORK VERSION USE_LIB_ZIP USE_LIB_MAGIC USE_LIB_XXHASH DEBUGGER CC USERCC HAVE_ARC4RANDOM_UNIFORM PKGCONFIG HAVE_GPERF HAVE_EXPLICIT_BZERO HAVE_EXPLICIT_MEMSET WANT_DYLINK USEROSTYPE LIBVERSION BUILD HOST TARGET CFLAGS LDFLAGS ; do
 eval VAL="\$${A}"
 [ -z "${VAL}" ] && VAL="(null)"
 echo " - ${A} = ${VAL}"

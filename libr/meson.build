@@ -159,7 +159,7 @@ anal_plugins += [
   'sh',
   'snes',
   'sparc_cs',
-  'sysz',
+  's390_cs',
   'tms320',
   #'tms320c64x',
   'tricore',
@@ -215,7 +215,7 @@ asm_plugins += [
   'sh',
   'snes',
   'sparc_cs',
-  'sysz',
+  's390_cs',
   'tms320',
   'tms320c64x',
   'tricore',
@@ -244,6 +244,7 @@ if no_user_plugins
       'mips_gnu',
       'ppc_gnu',
       'sparc_gnu',
+      's390_gnu',
       'v850_gnu',
     ]
     anal_plugins += [
@@ -414,7 +415,7 @@ io_plugins += [
   'self',
   'shm',
   'sparse',
-  'tcp',
+  'tcpslurp',
   'winkd',
   'winedbg',
   'zip'
@@ -519,6 +520,7 @@ r_util_files = [
   'include/r_util/r_ascii_table.h',
   'include/r_util/r_asn1.h',
   'include/r_util/r_assert.h',
+  'include/r_util/r_axml.h',
   'include/r_util/r_protobuf.h',
   'include/r_util/r_base64.h',
   'include/r_util/r_base91.h',
@@ -588,7 +590,8 @@ sflib_arch = [
   'linux-arm-32',
   'darwin-x86-64',
   'darwin-x86-32',
-  'darwin-arm-64'
+  'darwin-arm-64',
+  'freebsd-x86-32'
 ]
 
 sflib_arch_files = [

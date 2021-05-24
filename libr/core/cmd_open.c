@@ -377,6 +377,7 @@ static void cmd_open_bin(RCore *core, const char *input) {
 		break;
 	case '=': // "ob="
 		{
+			char temp[64];
 			RListIter *iter;
 			RList *list = r_list_newf ((RListFree) r_listinfo_free);
 			RBinFile *bf = NULL;
@@ -385,7 +386,6 @@ static void cmd_open_bin(RCore *core, const char *input) {
 				return;
 			}
 			r_list_foreach (bin->binfiles, iter, bf) {
-				char temp[4];
 				RInterval inter = (RInterval) {bf->o->baddr, bf->o->size};
 				RListInfo *info = r_listinfo_new (bf->file, inter, inter, -1,  sdb_itoa (bf->fd, temp, 10));
 				if (!info) {
@@ -1220,6 +1220,12 @@ R_API void r_core_file_reopen_debug(RCore *core, const char *args) {
 	ut64 old_base = core->bin->cur->o->baddr_shift;
 	int bits = core->rasm->bits;
 	char *bin_abspath = r_file_abspath (binpath);
+	if (strstr (bin_abspath, "://")) {
+		free (bin_abspath);
+		free (binpath);
+		r_list_free (old_sections);
+		return;
+	}
 	char *escaped_path = r_str_arg_escape (bin_abspath);
 	char *newfile = r_str_newf ("dbg://%s %s", escaped_path, args);
 	desc->uri = newfile;
@@ -1830,7 +1836,7 @@ static int cmd_open(void *data, const char *input) {
 			} else if ('?' == input[2]) {
 				r_core_cmd_help (core, help_msg_ood);
 			} else {
-				r_core_file_reopen_debug (core, input + 2);
+				r_core_file_reopen_debug (core, r_str_trim_head_ro (input + 2));
 			}
 			break;
 		case 'c': // "oob" : reopen with bin info

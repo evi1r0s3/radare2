@@ -1,3 +1,23 @@
+# handle tcc dependency (heavily modified version)
+tcc_files = [
+  'c/libtcc.c',
+  'c/tccgen.c',
+  'c/tccpp.c'
+]
+
+tcc_inc = [platform_inc, include_directories('c')]
+
+#libr2tcc = static_library('r2tcc', tcc_files,
+#  dependencies: [r_util_dep],
+#  include_directories: tcc_inc,
+#  implicit_include_directories: false
+#)
+
+tcc_dep = declare_dependency(
+ #  link_whole: libr2tcc,
+  include_directories: tcc_inc
+)
+
 r_parse_sources = [
   'code.c',
   'filter.c',
@@ -20,6 +40,7 @@ r_parse_sources = [
   'p/parse_riscv_pseudo.c',
   'p/parse_z80_pseudo.c'
 ]
+# r_parse_sources += tcc_files
 
 r_parse = library('r_parse', r_parse_sources,
   include_directories: platform_inc,

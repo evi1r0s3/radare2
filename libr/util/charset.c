@@ -1,8 +1,38 @@
 /* radare - LGPL - Copyright 2020-2021 - gogo, pancake */
 
 #include <r_util.h>
+#include <config.h>
 
 #define USE_RUNES 0
+
+#if HAVE_GPERF
+extern SdbGperf gperf_ascii;
+extern SdbGperf gperf_pokered;
+extern SdbGperf gperf_ebcdic37;
+
+static const SdbGperf *gperfs[] = {
+	&gperf_ascii,
+	&gperf_pokered,
+	&gperf_ebcdic37,
+	NULL
+};
+
+R_API SdbGperf *r_charset_get_gperf(const char *k) {
+	SdbGperf **gp = (SdbGperf**)gperfs;
+	while (*gp) {
+		SdbGperf *g = *gp;
+		if (!strcmp (k, g->name)) {
+			return *gp;
+		}
+		gp++;
+	}
+	return NULL;
+}
+#else
+R_API SdbGperf *r_charset_get_gperf(const char *k) {
+	return NULL;
+}
+#endif
 
 R_API RCharset *r_charset_new(void) {
 	return R_NEW0 (RCharset);
@@ -11,23 +41,36 @@ R_API RCharset *r_charset_new(void) {
 R_API void r_charset_free(RCharset *c) {
 	if (c) {
 		sdb_free (c->db);
+		sdb_free (c->db_char_to_hex);
 		free (c);
 	}
+}
+
+R_API void r_charset_close(RCharset *c) {
+	c->loaded = false;
 }
 
 R_API bool r_charset_open(RCharset *c, const char *cs) {
 	r_return_val_if_fail (c && cs, false);
 	sdb_reset (c->db);
-	sdb_open (c->db, cs);
-	sdb_reset (c->db_char_to_hex);
-	sdb_open (c->db_char_to_hex, cs);
 
+	SdbGperf *gp = r_charset_get_gperf (cs);
+	if (gp) {
+		sdb_free (c->db);
+		c->db = sdb_new0 ();
+		sdb_open_gperf (c->db, gp);
+	} else {
+		sdb_open (c->db, cs);
+	}
+
+	sdb_free (c->db_char_to_hex);
 	c->db_char_to_hex = sdb_new0 ();
 
 	SdbListIter *iter;
 	SdbKv *kv;
 	SdbList *sdbls = sdb_foreach_list (c->db, true);
 
+	c->loaded = false;
 	ls_foreach (sdbls, iter, kv) {
 		const char *new_key = kv->base.value;
 		const char *new_value = kv->base.key;
@@ -40,6 +83,7 @@ R_API bool r_charset_open(RCharset *c, const char *cs) {
 			c->decode_maxkeylen = val_len;
 		}
 		sdb_add (c->db_char_to_hex, new_key, new_value, 0);
+		c->loaded = true;
 	}
 	ls_free (sdbls);
 
@@ -99,6 +143,9 @@ R_API RCharsetRune *search_from_hex(RCharsetRune *r, const ut8 *hx) {
 
 // assumes out is as big as in_len
 R_API size_t r_charset_encode_str(RCharset *rc, ut8 *out, size_t out_len, const ut8 *in, size_t in_len) {
+	if (!rc->loaded) {
+		return in_len;
+	}
 	char k[32];
 	char *o = (char*)out;
 	size_t i;
@@ -108,8 +155,10 @@ R_API size_t r_charset_encode_str(RCharset *rc, ut8 *out, size_t out_len, const 
 		snprintf (k, sizeof (k), "0x%02x", ch_in);
 		const char *v = sdb_const_get (rc->db, k, 0);
 		const char *ret = r_str_get_fail (v, "?");
-
-		strcpy (o, ret);
+		char *res = strdup (ret);
+		r_str_unescape (res);
+		strcpy (o, res);
+		free (res);
 		o += strlen (o);
 	}
 
@@ -118,6 +167,9 @@ R_API size_t r_charset_encode_str(RCharset *rc, ut8 *out, size_t out_len, const 
 
 // assumes out is as big as in_len
 R_API size_t r_charset_decode_str(RCharset *rc, ut8 *out, size_t out_len, const ut8 *in, size_t in_len) {
+	if (!rc->loaded) {
+		return in_len;
+	}
 	char *o = (char*)out;
 
 	size_t maxkeylen = rc->encode_maxkeylen;

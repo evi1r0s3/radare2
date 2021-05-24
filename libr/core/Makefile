@@ -8,13 +8,12 @@ R2DEPS+=r_reg r_search r_syscall r_socket r_fs r_magic r_crypto
 
 OBJS=core.o cmd.o cmd_helps.o cfile.o cconfig.o visual.o cio.o yank.o libs.o agraph.o
 OBJS+=fortune.o hack.o vasm.o patch.o cbin.o corelog.o rtr.o cmd_api.o
-OBJS+=carg.o canal.o project.o gdiff.o casm.o disasm.o cplugin.o
+OBJS+=carg.o canal.o project.o gdiff.o casm.o disasm.o cplugin.o rvc.o
 OBJS+=vmenus.o vmenus_graph.o vmenus_zigns.o zdiff.o citem.o
 OBJS+=task.o panels.o pseudo.o vmarks.o anal_tp.o anal_objc.o blaze.o cundo.o
 OBJS+=cproject.o
 
 CFLAGS+=-I../../shlr/heap/include
-CFLAGS+=-I../../shlr/tree-sitter/lib/include -I../../shlr/radare2-shell-parser/src/tree_parser
 CFLAGS+=-DR2_PLUGIN_INCORE -I../../shlr
 LDFLAGS+=${DL_LIBS}
 LDFLAGS+=${CLOCK_LDFLAGS}
@@ -40,7 +39,6 @@ STATIC_OBJS=$(addprefix $(LTOP)/core/p/,$(STATIC_OBJ))
 OBJS+=$(STATIC_OBJS)
 
 include $(TOP)/shlr/gdb/deps.mk
-include $(TOP)/shlr/radare2-shell-parser-deps.mk
 include $(LTOP)/rules.mk
 
 cmd.o: cmd_hash.c cmd_debug.c cmd_zign.c cmd_project.c \

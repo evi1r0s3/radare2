@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2007-2020 - pancake */
+/* radare - LGPL - Copyright 2007-2021 - pancake */
 /* dietline is a lightweight and portable library similar to GNU readline */
 
 #include <r_cons.h>
@@ -608,14 +608,14 @@ static void selection_widget_draw(void) {
 		r_cons_printf ("%s", sel_widget->selection == y + scroll ? selected_color : background_color);
 		r_cons_printf ("%-*.*s", sel_widget->w, sel_widget->w, option);
 		if (scrollbar && R_BETWEEN (scrollbar_y, y, scrollbar_y + scrollbar_l)) {
-			r_cons_memcat (Color_INVERT" "Color_INVERT_RESET, 10);
+			r_cons_write (Color_INVERT" "Color_INVERT_RESET, 10);
 		} else {
-			r_cons_memcat (" ", 1);
+			r_cons_write (" ", 1);
 		}
 	}
 
 	r_cons_gotoxy (pos_x + I.buffer.length, pos_y);
-	r_cons_memcat (Color_RESET_BG, 5);
+	r_cons_write (Color_RESET_BG, 5);
 	r_cons_flush ();
 }
 
@@ -936,7 +936,6 @@ static inline void delete_till_end(void) {
 static void __print_prompt(void) {
         RCons *cons = r_cons_singleton ();
 	int columns = r_cons_get_size (NULL) - 2;
-	int chars = R_MAX (1, strlen (I.buffer.data));
 	int len, i, cols = R_MAX (1, columns - r_str_ansi_len (I.prompt) - 2);
 	if (cons->line->prompt_type == R_LINE_PROMPT_OFFSET) {
                 r_cons_gotoxy (0,  cons->rows);
@@ -948,7 +947,9 @@ static void __print_prompt(void) {
 	} else {
 		printf ("\r%s", I.prompt);
 	}
-	fwrite (I.buffer.data, 1, R_MIN (cols, chars), stdout);
+	if (I.buffer.length > 0) {
+		fwrite (I.buffer.data, I.buffer.length, 1, stdout);
+	}
 	printf ("\r%s", I.prompt);
 	if (I.buffer.index > cols) {
 		printf ("< ");
@@ -963,7 +964,9 @@ static void __print_prompt(void) {
 	if (len > 0 && (i + len) <= I.buffer.length) {
 		if (i < I.buffer.length) {
 			size_t slen = R_MIN (len, (I.buffer.length - i));
-			fwrite (I.buffer.data + i, 1, slen, stdout);
+			if (slen > 0 && i < sizeof (I.buffer.data)) {
+				fwrite (I.buffer.data + i, 1, slen, stdout);
+			}
 		}
 	}
 	fflush (stdout);
@@ -1470,9 +1473,6 @@ R_API const char *r_line_readline_cb(RLineReadCallback cb, void *user) {
 				__delete_next_char ();
 			}
 			break;
-		case 10:// ^J -- ignore
-			r_cons_break_pop ();
-			return I.buffer.data;
 		case 11:// ^K
 			I.buffer.data[I.buffer.index] = '\0';
 			I.buffer.length = I.buffer.index;
@@ -1889,6 +1889,7 @@ R_API const char *r_line_readline_cb(RLineReadCallback cb, void *user) {
 				r_line_autocomplete ();
 			}
 			break;
+		case 10: // ^J
 		case 13: // enter
 			if (I.hud) {
 				I.hud->activate = false;

@@ -1,4 +1,4 @@
-/* radare2 - LGPL - Copyright 2018 - pancake */
+/* radare2 - LGPL - Copyright 2018-2021 - pancake, keegan */
 
 #include <r_types.h>
 #include <r_util.h>
@@ -263,7 +263,7 @@ static ut64 rebase_infos_get_slide(RDyldCache *cache) {
 
 static void r_dyld_locsym_entries_by_offset(RDyldCache *cache, RList *symbols, SetU *hash, ut64 bin_header_offset) {
 	RDyldLocSym *locsym = cache->locsym;
-	if (!locsym->entries) {
+	if (!locsym || !locsym->entries) {
 		return;
 	}
 
@@ -439,7 +439,7 @@ static ut32 dumb_ctzll(ut64 x) {
 	return result;
 }
 
-static ut64 estimate_slide(RBinFile *bf, RDyldCache *cache, ut64 value_mask) {
+static ut64 estimate_slide(RBinFile *bf, RDyldCache *cache, ut64 value_mask, ut64 value_add) {
 	ut64 slide = 0;
 	ut64 *classlist = malloc (64);
 	if (!classlist) {
@@ -500,10 +500,11 @@ static ut64 estimate_slide(RBinFile *bf, RDyldCache *cache, ut64 value_mask) {
 		ut64 data_tail = data_addr & 0xfff;
 		ut64 data_tail_end = (data_addr + sections[data_idx].size) & 0xfff;
 		for (i = 0; i < n_classes; i++) {
-			ut64 cl_tail = classlist[i] & 0xfff;
+			ut64 cl_addr = (classlist[i] & value_mask) + value_add;
+			ut64 cl_tail = cl_addr & 0xfff;
 			if (cl_tail >= data_tail && cl_tail < data_tail_end) {
 				ut64 off = cl_tail - data_tail;
-				slide = ((classlist[i] - off) & value_mask) - (data_addr & value_mask);
+				slide = ((cl_addr - off) & value_mask) - (data_addr & value_mask);
 				found_sample = true;
 				break;
 			}
@@ -581,7 +582,7 @@ static RDyldRebaseInfo *get_rebase_info(RBinFile *bf, RDyldCache *cache, ut64 sl
 		rebase_info->page_size = slide_info.page_size;
 		rebase_info->one_page_buf = one_page_buf;
 		if (slide == UT64_MAX) {
-			rebase_info->slide = estimate_slide (bf, cache, 0x7ffffffffffffULL);
+			rebase_info->slide = estimate_slide (bf, cache, 0x7ffffffffffffULL, 0);
 			if (rebase_info->slide) {
 				eprintf ("dyldcache is slid: 0x%"PFMT64x"\n", rebase_info->slide);
 			}
@@ -658,7 +659,7 @@ static RDyldRebaseInfo *get_rebase_info(RBinFile *bf, RDyldCache *cache, ut64 sl
 		rebase_info->page_size = slide_info.page_size;
 		rebase_info->one_page_buf = one_page_buf;
 		if (slide == UT64_MAX) {
-			rebase_info->slide = estimate_slide (bf, cache, rebase_info->value_mask);
+			rebase_info->slide = estimate_slide (bf, cache, rebase_info->value_mask, rebase_info->value_add);
 			if (rebase_info->slide) {
 				eprintf ("dyldcache is slid: 0x%"PFMT64x"\n", rebase_info->slide);
 			}
@@ -729,7 +730,7 @@ static RDyldRebaseInfo *get_rebase_info(RBinFile *bf, RDyldCache *cache, ut64 sl
 		rebase_info->entries = tmp_buf_2;
 		rebase_info->entries_size = slide_info.entries_size;
 		if (slide == UT64_MAX) {
-			rebase_info->slide = estimate_slide (bf, cache, UT64_MAX);
+			rebase_info->slide = estimate_slide (bf, cache, UT64_MAX, 0);
 			if (rebase_info->slide) {
 				eprintf ("dyldcache is slid: 0x%"PFMT64x"\n", rebase_info->slide);
 			}
@@ -765,6 +766,9 @@ static RDyldRebaseInfos *get_rebase_infos(RBinFile *bf, RDyldCache *cache) {
 			goto beach;
 		}
 		if ((n_slide_infos = r_buf_read_le32_at (cache_buf, 0x13c)) == UT32_MAX) {
+			goto beach;
+		}
+		if (!n_slide_infos) {
 			goto beach;
 		}
 
@@ -818,7 +822,7 @@ static RDyldRebaseInfos *get_rebase_infos(RBinFile *bf, RDyldCache *cache) {
 	if (cache->hdr->mappingCount > 1) {
 		RDyldRebaseInfosEntry * infos = R_NEWS0 (RDyldRebaseInfosEntry, 1);
 		if (!infos) {
-			return NULL;
+			goto beach;
 		}
 
 		infos[0].start = cache->maps[1].fileOffset;
@@ -840,17 +844,16 @@ static bool check_buffer(RBuffer *buf) {
 		return false;
 	}
 
-	ut8 hdr[4];
-	ut8 arch[9] = { 0 };
-	int rarch = r_buf_read_at (buf, 9, arch, sizeof (arch) - 1);
-	int rhdr = r_buf_read_at (buf, 0, hdr, sizeof (hdr));
-	if (rhdr != sizeof (hdr) || memcmp (hdr, "dyld", 4)) {
+	char hdr[17] = { 0 };
+	int rhdr = r_buf_read_at (buf, 0, (ut8 *)&hdr, sizeof (hdr) - 1);
+	if (rhdr != sizeof (hdr) - 1) {
 		return false;
 	}
-	if (rarch > 0 && arch[0] && !strstr ((const char *)arch, "arm64")) {
-		return false;
-	}
-	return true;
+
+	return !strcmp (hdr, "dyld_v1   arm64")
+		|| !strcmp (hdr, "dyld_v1  arm64e")
+		|| !strcmp (hdr, "dyld_v1  x86_64")
+		|| !strcmp (hdr, "dyld_v1 x86_64h");
 }
 
 static cache_img_t *read_cache_images(RBuffer *cache_buf, cache_hdr_t *hdr) {
@@ -1496,10 +1499,6 @@ static bool load_buffer(RBinFile *bf, void **bin_obj, RBuffer *buf, ut64 loadadd
 	}
 	cache->accel = read_cache_accel (cache->buf, cache->hdr, cache->maps);
 	cache->locsym = r_dyld_locsym_new (cache->buf, cache->hdr);
-	if (!cache->locsym) {
-		r_dyldcache_free (cache);
-		return false;
-	}
 	cache->bins = create_cache_bins (bf, cache->buf, cache->hdr, cache->maps, cache->accel);
 	if (!cache->bins) {
 		r_dyldcache_free (cache);
@@ -1555,12 +1554,16 @@ static RBinInfo *info(RBinFile *bf) {
 	ret->bclass = strdup ("dyldcache");
 	ret->rclass = strdup ("ios");
 	ret->os = strdup ("iOS");
-	ret->arch = strdup ("arm"); // XXX
+	if (strstr (cache->hdr->magic, "x86_64")) {
+		ret->arch = strdup ("x86");
+		ret->bits = 64;
+	} else {
+		ret->arch = strdup ("arm");
+		ret->bits = strstr (cache->hdr->magic, "arm64")? 64: 32;
+	}
 	ret->machine = strdup (ret->arch);
 	ret->subsystem = strdup ("xnu");
 	ret->type = strdup ("library-cache");
-	bool dyld64 = strstr(cache->hdr->magic, "arm64") != NULL;
-	ret->bits = dyld64? 64: 32;
 	ret->has_va = true;
 	ret->big_endian = big_endian;
 	ret->dbg_info = 0;
@@ -1697,6 +1700,7 @@ static RList *sections(RBinFile *bf) {
 	int i;
 	for (i = 0; i < cache->hdr->mappingCount; i++) {
 		if (!(ptr = R_NEW0 (RBinSection))) {
+			r_list_free (ret);
 			return NULL;
 		}
 		ptr->name = r_str_newf ("cache_map.%d", i);
@@ -1966,6 +1970,7 @@ static void header(RBinFile *bf) {
 					pj_kn (pj, "page_extras_count", info2->page_extras_count);
 					pj_kn (pj, "delta_mask", info2->delta_mask);
 					pj_kn (pj, "value_mask", info2->value_mask);
+					pj_kn (pj, "value_add", info2->value_add);
 					pj_kn (pj, "delta_shift", info2->delta_shift);
 					pj_kn (pj, "page_size", info2->page_size);
 				} else if (version == 1) {

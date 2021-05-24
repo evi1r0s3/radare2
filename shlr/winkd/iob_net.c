@@ -102,6 +102,7 @@ static void *iob_net_open(const char *path) {
 	char *host = strdup (path);
 	char *port = strchr (host, ':');
 	if (R_STR_ISEMPTY (port)) {
+		eprintf ("Missing port. Use winkd://host:udp-port:x.x.x.x.\n");
 		free (host);
 		free (obj);
 		return NULL;
@@ -109,6 +110,7 @@ static void *iob_net_open(const char *path) {
 	*port++ = 0;
 	char *key = strchr (port, ':');
 	if (R_STR_ISEMPTY (key)) {
+		eprintf ("Missing key. Use winkd://host:udp-port:x.x.x.x.\n");
 		free (host);
 		free (obj);
 		return NULL;
@@ -134,6 +136,7 @@ static void *iob_net_open(const char *path) {
 	if (!r_socket_connect_udp (sock, host, port, 1)) {
 		free (host);
 		free (obj);
+		r_socket_free (sock);
 		return NULL;
 	}
 	obj->sock = sock;

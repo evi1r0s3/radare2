@@ -4,6 +4,7 @@
 #include <r_list.h>
 #include <r_flag.h>
 #include <r_core.h>
+#include <rvc.h>
 #define USE_R2 1
 #include <spp/spp.h>
 
@@ -12,23 +13,13 @@
 // project apis to be used from cmd_project.c
 
 static bool is_valid_project_name(const char *name) {
-	int i;
-	if (r_str_endswith (name, ".zip")) {
+	if (r_str_len_utf8 (name) >= 16) {
 		return false;
 	}
-	for (i = 0; name[i]; i++) {
-		switch (name[i]) {
-		case '\\': // for w32
-		case '.':
-		case '_':
-		case ':':
-		case '-':
-			continue;
-		}
-		if (isalpha ((unsigned char)name[i])) {
-			continue;
-		}
-		if (IS_DIGIT (name[i])) {
+	const char  *extention = r_str_endswith (name, ".zip") ?
+		r_str_last (name, ".zip") : NULL;
+	for (; *name && name != extention; name++) {
+		if (IS_DIGIT (*name) || IS_LOWER (*name) || *name == '_') {
 			continue;
 		}
 		return false;
@@ -230,7 +221,7 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 
 	char *rc_path = get_project_script_path (core, prjfile);
 	char *prj_dir = r_file_dirname (rc_path);
-
+	R_FREE (rc_path);
 	if (r_str_endswith (prjfile, R_SYS_DIR "rc.r2")) {
 		// XXX
 		eprintf ("ENDS WITH\n");
@@ -243,7 +234,6 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 			db = r_str_newf ("%s.d", prjfile);
 			if (!db) {
 				free (prj_dir);
-				free (rc_path);
 				return false;
 			}
 			path = strdup (db);
@@ -251,7 +241,6 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 			db = r_str_newf ("%s" R_SYS_DIR "%s.d", prj_dir, prjfile);
 			if (!db) {
 				free (prj_dir);
-				free (rc_path);
 				return false;
 			}
 			path = r_file_abspath (db);
@@ -260,7 +249,6 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 	if (!path) {
 		free (db);
 		free (prj_dir);
-		free (rc_path);
 		return false;
 	}
 	if (rop_db) {
@@ -280,7 +268,6 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 		free (db);
 		free (path);
 		free (prj_dir);
-		free (rc_path);
 		return false;
 	}
 	sdb_ns_set (core->sdb, "rop", rop_db);
@@ -308,17 +295,14 @@ static bool load_project_rop(RCore *core, const char *prjfile) {
 	free (path_ns);
 	free (db);
 	free (prj_dir);
-	free (rc_path);
 	return true;
 }
 
 R_API void r_core_project_execute_cmds(RCore *core, const char *prjfile) {
 	char *str = r_core_project_notes_file (core, prjfile);
 	char *data = r_file_slurp (str, NULL);
-	if (!data) {
-		free (str);
-		return;
-	}
+	free (str);
+	r_return_if_fail (data);
 	Output out;
 	out.fout = NULL;
 	out.cout = r_strbuf_new (NULL);
@@ -336,7 +320,6 @@ R_API void r_core_project_execute_cmds(RCore *core, const char *prjfile) {
 		bol = strtok (NULL, "\n");
 	}
 	free (data);
-	free (str);
 }
 
 typedef struct {
@@ -462,10 +445,10 @@ R_API char *r_core_project_name(RCore *core, const char *prjfile) {
 	if (R_STR_ISEMPTY (file)) {
 		free (file);
 		file = strdup (prjfile);
-		char *slash = (char *)r_str_lchr (file, R_SYS_DIR[0]); 
+		char *slash = (char *)r_str_lchr (file, R_SYS_DIR[0]);
 		if (slash) {
 			*slash = 0;
-			slash = (char *)r_str_lchr (file, R_SYS_DIR[0]); 
+			slash = (char *)r_str_lchr (file, R_SYS_DIR[0]);
 			if (slash) {
 				char *res = strdup (slash + 1);
 				free (file);
@@ -505,7 +488,7 @@ static bool store_files_and_maps(RCore *core, RIODesc *desc, ut32 id) {
 }
 #endif
 
-static bool project_save_script(RCore *core, const char *file, int opts) {
+R_API bool r_core_project_save_script(RCore *core, const char *file, int opts) {
 	char *filename, *hl, *ohl = NULL;
 	int fdold;
 
@@ -618,32 +601,26 @@ static bool project_save_script(RCore *core, const char *file, int opts) {
 	return true;
 }
 
-R_API bool r_core_project_save_script(RCore *core, const char *file, int opts) {
-	return project_save_script (core, file, opts);
-}
-
 R_API bool r_core_project_save(RCore *core, const char *prj_name) {
 	bool scr_null = false;
 	bool ret = true;
 	SdbListIter *it;
 	SdbNs *ns;
 	r_return_val_if_fail (prj_name && *prj_name, false);
-	char *script_path = get_project_script_path (core, prj_name);
+
 	if (r_config_get_b (core->config, "cfg.debug")) {
 		eprintf ("radare2 does not support projects on debugged bins.\n");
 		return false;
 	}
+
+	char *script_path = get_project_script_path (core, prj_name);
 	if (!script_path) {
 		eprintf ("Invalid project name '%s'\n", prj_name);
 		return false;
 	}
-	char *prj_dir = NULL;
-	if (r_str_endswith (script_path, R_SYS_DIR "rc.r2")) {
-		/* new project format */
-		prj_dir = r_file_dirname (script_path);
-	} else {
-		prj_dir = r_str_newf ("%s.d", script_path);
-	}
+	char *prj_dir = r_str_endswith (script_path, R_SYS_DIR "rc.r2")
+		? r_file_dirname (script_path)
+		: r_str_newf ("%s.d", script_path);
 	if (r_file_exists (script_path)) {
 		if (r_file_is_directory (script_path)) {
 			eprintf ("Structural error: rc.r2 shouldnt be a directory.\n");
@@ -672,7 +649,7 @@ R_API bool r_core_project_save(RCore *core, const char *prj_name) {
 		}
 	}
 
-	if (!project_save_script (core, script_path, R_CORE_PRJ_ALL)) {
+	if (!r_core_project_save_script (core, script_path, R_CORE_PRJ_ALL)) {
 		eprintf ("Cannot open '%s' for writing\n", prj_name);
 		ret = false;
 	}
@@ -691,24 +668,22 @@ R_API bool r_core_project_save(RCore *core, const char *prj_name) {
 		free (prj_bin_dir);
 		free (bin_file);
 	}
-	if (r_config_get_i (core->config, "prj.git")) {
-		char *cwd = r_sys_getdir ();
+	if (r_config_get_i (core->config, "prj.vc")) {
 		char *git_dir = r_str_newf ("%s" R_SYS_DIR ".git", prj_dir);
-		if (r_sys_chdir (prj_dir)) {
+		if (!strcmp ("git", r_config_get (core->config, "prj.vc.type"))
+				&& r_config_get_b (core->config, "prj.vc")) {
 			if (!r_file_is_directory (git_dir)) {
-				r_sys_cmd ("git init");
+				r_vc_git_init (prj_dir);
 			}
+			free (git_dir);
+			r_vc_git_add (prj_dir, ".");
 			if (r_cons_is_interactive ()) {
-				r_sys_cmd ("git add * ; git commit -a");
+				r_vc_git_commit (prj_dir, NULL);
 			} else {
-				r_sys_cmd ("git add * ; git commit -a -m commit");
+				r_vc_git_commit (prj_dir, "commit");
 			}
-		} else {
-			eprintf ("Cannot chdir %s\n", prj_dir);
+
 		}
-		r_sys_chdir (cwd);
-		free (git_dir);
-		free (cwd);
 	}
 	if (r_config_get_i (core->config, "prj.zip")) {
 		char *cwd = r_sys_getdir ();

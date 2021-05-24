@@ -1597,6 +1597,7 @@ static void autocomplete_vars(RCore *core, RLineCompletion *completion, const ch
 			r_line_completion_push (completion, var->name);
 		}
 	}
+	r_list_free (vars);
 }
 
 static void autocomplete_macro(RCore *core, RLineCompletion *completion, const char *str) {
@@ -2487,7 +2488,7 @@ static void r_core_setenv (RCore *core) {
 }
 
 static int mywrite(const ut8 *buf, int len) {
-	return r_cons_memcat ((const char *)buf, len);
+	return r_cons_write ((const char *)buf, len);
 }
 
 static bool exists_var(RPrint *print, ut64 func_addr, char *str) {
@@ -2767,7 +2768,6 @@ R_API bool r_core_init(RCore *core) {
 	core->config = NULL;
 	core->prj = r_project_new ();
 	core->http_up = false;
-	core->use_tree_sitter_r2cmd = false;
 	ZERO_FILL (core->root_cmd_descriptor);
 	core->print = r_print_new ();
 	core->ropchain = r_list_newf ((RListFree)free);
@@ -3580,7 +3580,7 @@ reaccept:
 					// silly http emulation over rap://
 					char line[256] = {0};
 					r_socket_read_block (c, (ut8*)line, sizeof (line));
-					if (!strncmp (line, "ET /cmd/", 8)) {
+					if (!r_str_ncpy (line, "ET /cmd/", 8)) {
 						char *cmd = line + 8;
 						char *http = strstr (cmd, "HTTP");
 						if (http) {

@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2008-2020 - nibble, pancake, alvaro_fe */
+/* radare - LGPL - Copyright 2008-2021 - nibble, pancake, alvaro_fe */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1980,6 +1980,14 @@ bool Elf_(r_bin_elf_get_stripped)(ELFOBJ *bin) {
 	if (!bin->shdr) {
 		return false;
 	}
+	if (bin->g_sections) {
+		size_t i;
+		for (i = 0; !bin->g_sections[i].last; i++) {
+			if (!strcmp (bin->g_sections[i].name, ".gnu_debugdata")) {
+				return false;
+			}
+		}
+	}
 	size_t i;
 	for (i = 0; i < bin->ehdr.e_shnum; i++) {
 		if (bin->shdr[i].sh_type == SHT_SYMTAB) {
@@ -2109,7 +2117,7 @@ char* Elf_(r_bin_elf_get_arch)(ELFOBJ *bin) {
 	case EM_IA_64:
 		return strdup ("ia64");
 	case EM_S390:
-		return strdup ("sysz");
+		return strdup ("s390");
 	default: return strdup ("x86");
 	}
 }
@@ -3118,15 +3126,15 @@ static RBinElfSymbol* get_symbols_from_phdr(ELFOBJ *bin, int type) {
 	for (i = 1, ret_ctr = 0; i < nsym; i++) {
 		if (i >= capacity1) { // maybe grow
 			// You take what you want, but you eat what you take.
-			Elf_(Sym)* temp_sym = (Elf_(Sym)*) realloc (sym, (capacity1 * GROWTH_FACTOR) * sym_size);
+			Elf_(Sym)* temp_sym = (Elf_(Sym)*) realloc (sym, (size_t)(capacity1 * GROWTH_FACTOR) * sym_size);
 			if (!temp_sym) {
 				goto beach;
 			}
 			sym = temp_sym;
-			capacity1 *= GROWTH_FACTOR;
+			capacity1 = (size_t)(capacity1 * GROWTH_FACTOR);
 		}
 		if (ret_ctr >= capacity2) { // maybe grow
-			RBinElfSymbol *temp_ret = realloc (ret, capacity2 * GROWTH_FACTOR * sizeof (struct r_bin_elf_symbol_t));
+			RBinElfSymbol *temp_ret = realloc (ret, (size_t)(capacity2 * GROWTH_FACTOR) * sizeof (struct r_bin_elf_symbol_t));
 			if (!temp_ret) {
 				goto beach;
 			}
@@ -3215,7 +3223,7 @@ done:
 	// Size everything down to only what is used
 	{
 		nsym = i > 0? i: 1;
-		Elf_(Sym) *temp_sym = (Elf_(Sym) *)realloc (sym, (nsym * GROWTH_FACTOR) * sym_size);
+		Elf_(Sym) *temp_sym = (Elf_(Sym) *)realloc (sym, (size_t)(nsym * GROWTH_FACTOR) * sym_size);
 		if (!temp_sym) {
 			goto beach;
 		}
@@ -3464,7 +3472,42 @@ static int cmp_RBinElfSymbol(const RBinElfSymbol *a, const RBinElfSymbol *b) {
 	if (result != 0) {
 		return result;
 	}
-	return strcmp(a->type, b->type);
+	return strcmp (a->type, b->type);
+}
+
+static RBinElfSymbol* parse_gnu_debugdata(ELFOBJ *bin, size_t *ret_size) {
+	if (bin->g_sections) {
+		size_t i;
+		for (i = 0; !bin->g_sections[i].last; i++) {
+			if (!strcmp (bin->g_sections[i].name, ".gnu_debugdata")) {
+				ut64 addr = bin->g_sections[i].offset;
+				ut64 size = bin->g_sections[i].size;
+				if (size < 10) {
+					return false;
+				}
+				ut8 *data = malloc (size + 1);
+				if (r_buf_read_at (bin->b, addr, data, size) == -1) {
+					eprintf ("Cannot read%c", 10);
+				}
+				size_t osize;
+				ut8 *odata = r_sys_unxz (data, size, &osize);
+				if (odata) {
+					RBuffer *newelf = r_buf_new_with_pointers (odata, osize, false);
+					ELFOBJ* newobj = Elf_(r_bin_elf_new_buf)(newelf, false);
+					RBinElfSymbol *symbol = Elf_(r_bin_elf_get_symbols) (newobj);
+					newobj->g_symbols = NULL;
+					Elf_(r_bin_elf_free)(newobj);
+					r_buf_free (newelf);
+					free (odata);
+					*ret_size = i;
+					return symbol;
+				}
+				free (data);
+				return NULL;
+			}
+		}
+	}
+	return NULL;
 }
 
 // TODO: return RList<RBinSymbol*> .. or run a callback with that symbol constructed, so we don't have to do it twice
@@ -3495,10 +3538,15 @@ static RBinElfSymbol* Elf_(_r_bin_elf_get_symbols_imports)(ELFOBJ *bin, int type
 		return Elf_(get_phdr_symbols) (bin, type);
 	}
 	if (!UT32_MUL (&shdr_size, bin->ehdr.e_shnum, sizeof (Elf_(Shdr)))) {
-		return false;
+		return NULL;
 	}
 	if (shdr_size + 8 > bin->size) {
-		return false;
+		return NULL;
+	}
+	RBinElfSymbol *dbgsyms = parse_gnu_debugdata (bin, &ret_size);
+	if (dbgsyms) {
+		ret = dbgsyms;
+		ret_ctr = ret_size;
 	}
 	for (i = 0; i < bin->ehdr.e_shnum; i++) {
 		if (((type & R_BIN_ELF_SYMTAB_SYMBOLS) && bin->shdr[i].sh_type == SHT_SYMTAB) ||

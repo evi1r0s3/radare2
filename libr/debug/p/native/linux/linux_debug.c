@@ -76,7 +76,7 @@ static RDebugReasonType linux_handle_new_task(RDebug *dbg, int tid);
 
 int linux_handle_signals(RDebug *dbg, int tid) {
 	siginfo_t siginfo = { 0 };
-	int ret = r_debug_ptrace (dbg, PTRACE_GETSIGINFO, tid, 0, (r_ptrace_data_t)(size_t)&siginfo);
+	int ret = r_debug_ptrace (dbg, PTRACE_GETSIGINFO, tid, 0, (r_ptrace_data_t)&siginfo);
 	if (ret == -1) {
 		/* ESRCH means the process already went away :-/ */
 		if (errno == ESRCH) {
@@ -1176,10 +1176,6 @@ int linux_reg_read(RDebug *dbg, int type, ut8 *buf, int size) {
 			};
 			ret = r_debug_ptrace (dbg, PTRACE_GETREGSET, pid, 1, &io);
 			// ret = ptrace (PTRACE_GETREGSET, pid, (void*)(size_t)(NT_PRSTATUS), NULL); // &io);
-			if (ret != 0) {
-				r_sys_perror("PTRACE_GETREGSET");
-				return false;
-			}
 #elif __BSD__ && (__POWERPC__ || __sparc__)
 			ret = r_debug_ptrace (dbg, PTRACE_GETREGS, pid, &regs, NULL);
 #else
@@ -1206,11 +1202,14 @@ int linux_reg_read(RDebug *dbg, int type, ut8 *buf, int size) {
 #if HAVE_YMM && __x86_64__ && defined(PTRACE_GETREGSET)
 		ut32 ymm_space[128];	// full ymm registers
 		struct _xstate xstate;
-		struct iovec iov;
+		struct iovec iov = {};
 		iov.iov_base = &xstate;
 		iov.iov_len = sizeof(struct _xstate);
 		ret = r_debug_ptrace (dbg, PTRACE_GETREGSET, pid, (void*)NT_X86_XSTATE, &iov);
-		if (ret != 0) {
+		if (errno == ENODEV) {
+			// ignore ENODEV, it just means this CPU or kernel doesn't support XSTATE
+			ret = 0;
+		} else if (ret != 0) {
 			r_sys_perror ("PTRACE_GETREGSET");
 			return false;
 		}
@@ -1224,8 +1223,8 @@ int linux_reg_read(RDebug *dbg, int type, ut8 *buf, int size) {
 				ymm_space[ri*8+rj] = xstate.fpstate._xmm[ri].element[rj];
 #endif
 			}
-			for (rj=0; rj < 4; rj++)	{
-				ymm_space[ri*8+(rj+4)] = xstate.ymmh.ymmh_space[ri*4+rj];
+			for (rj = 0; rj < 4; rj++)	{
+				ymm_space[ri * 8 + (rj + 4)] = xstate.ymmh.ymmh_space[ri * 4 + rj];
 			}
 		}
 		size = R_MIN (sizeof (ymm_space), size);

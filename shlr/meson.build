@@ -11,28 +11,33 @@ if not capstone_dep.found() or not get_option('use_sys_capstone')
 
   capstone_version = get_option('use_capstone_version')
 
-  use_capstone5 = get_option('use_capstone5')
-  if use_capstone5
-    warning('use_capstone5 is deprecated. Use -Duse_capstone_version=v5 instead.')
-    capstone_version = 'v5'
-  endif
-
   res = run_command(py3_exe, '-c', '__import__("sys").exit(__import__("os").path.exists("@0@"))'.format(capstone_path))
   if res.returncode() == 0
     if not git_exe.found()
       error('Cannot load capstone library. Either provide capstone in ./shlr/capstone or install git, so it can be downloaded')
     endif
 
+    patches_files = []
     # NOTE: when you update CS_TIP or CS_BRA, also update them in shlr/Makefile
     if capstone_version == 'v5'
-      CS_TIP = 'baa1f94cfdacd921744769bf7d93f00892ef53fa'
+      CS_TIP = 'f278de39c1e8a9fca977b8dfeed99d6d1f8b82bf'
       CS_BRA = 'next'
+      patches_files = [
+        'fix-x86-16.patch',
+        'mmm.patch'
+      ]
     elif capstone_version == 'v3'
       CS_TIP = '61bf71c771680033651f16cff832446e421847b1'
       CS_BRA = 'v3'
     elif capstone_version == 'v4'
-      CS_TIP = '2edae851d9fee511a57d4da32d5acecedd95d7ed'
+      CS_TIP = 'a7cac8352f7397aa73bb2e2dcc1b6cdb2e1b8461'
       CS_BRA = 'v4'
+      patches_files = [
+        'capstone-calloc.patch',
+        'fix-x86-16.patch',
+        'sparc-crash.patch',
+        'sstream-null.patch'
+      ]
     else
       error('Wrong capstone version selected. Please use one of the supported versions.')
     endif
@@ -52,16 +57,9 @@ if not capstone_dep.found() or not get_option('use_sys_capstone')
       error('Cannot execute git reset command')
     endif
 
-    patches_files = [
-      'capstone-calloc.patch',
-      'fix-x86-16.patch',
-      'sparc-crash.patch',
-      'sstream-null.patch'
-    ]
-
     message('Patching capstone with radare\'s patches')
     foreach file : patches_files
-      patch_path = join_paths(meson.current_source_dir(), 'capstone-patches', file)
+      patch_path = join_paths(meson.current_source_dir(), 'capstone-patches', capstone_version, file)
       patch_cmd_str = '-C @0@ apply -p1 @1@'.format(capstone_path, patch_path)
       patch_cmd = run_command(git_exe, patch_cmd_str.split())
       if patch_cmd.returncode() != 0
@@ -128,6 +126,11 @@ if not capstone_dep.found() or not get_option('use_sys_capstone')
   ]
   rel_cs5_files = [
     'arch/X86/X86InstPrinterCommon.c',
+    # Add riscv files
+    'arch/RISCV/RISCVMapping.c',
+    'arch/RISCV/RISCVModule.c',
+    'arch/RISCV/RISCVInstPrinter.c',
+    'arch/RISCV/RISCVDisassembler.c'
   ]
 
   user_plugins = get_option('plugins').split(',')
@@ -206,96 +209,6 @@ else
   message('Use system-provided capstone library')
 endif
 
-
-# handle tree-sitter
-tree_sitter_cflags = ''
-if cc.has_argument('-std=gnu99')
-  tree_sitter_cflags = '-std=gnu99'
-elif cc.has_argument('-std=c99')
-  tree_sitter_cflags = '-std=c99'
-endif
-
-tree_sitter_dep = dependency('tree-sitter', required: false)
-if not tree_sitter_dep.found() or not get_option('use_sys_tree_sitter')
-  message('Use bundled tree-sitter')
-  tree_sitter_path = 'tree-sitter'
-  tree_sitter_vc_path = 'tree-sitter.vc'
-  if get_option('tree-sitter-sync')
-    if not git_exe.found()
-      error('Cannot sync tree-sitter library. Either provide tree-sitter in ./shlr/tree-sitter or install git, so it can be downloaded')
-    endif
-
-    # NOTE: when you update TS_TIP or TS_BRA, also update them in shlr/Makefile
-    TS_TIP = '86a5dabbcbdac650c53a889183bf56d7e721e09e'
-    TS_BRA = 'master'
-
-    message('Deleting existing directories @0@ and @1@'.format(tree_sitter_vc_path, tree_sitter_path))
-    res = run_command('rm', '-rf @0@ @1@'.format(tree_sitter_vc_path, tree_sitter_path).split())
-    message('Cloning tree-sitter ' + TS_BRA + ' branch, commit ' + TS_TIP + ', into ' + tree_sitter_vc_path)
-    git_cmd = 'clone -b @0@ https://github.com/tree-sitter/tree-sitter.git @1@'.format(TS_BRA, tree_sitter_vc_path)
-    clone_cmd = run_command(git_exe, git_cmd.split())
-    if clone_cmd.returncode() != 0
-      error('Cannot execute git clone command')
-    endif
-
-    reset_cmd_str = '-C @0@ reset --hard @1@'.format(tree_sitter_vc_path, TS_TIP)
-    reset_cmd = run_command(git_exe, reset_cmd_str.split())
-    if reset_cmd.returncode() != 0
-      error('Cannot execute git reset command')
-    endif
-
-    message('Copying files from @0@ to @1@'.format(tree_sitter_vc_path, tree_sitter_path))
-    res = run_command('mkdir',  '-p @0@/lib'.format(tree_sitter_path).split())
-    res = run_command('cp',  '-r @0@/lib/src @1@/lib'.format(tree_sitter_vc_path, tree_sitter_path).split())
-    res = run_command('cp',  '-r @0@/lib/include @1@/lib'.format(tree_sitter_vc_path, tree_sitter_path).split())
-    message('Deleting @0@'.format(tree_sitter_vc_path))
-    res = run_command('rm', '-rf @0@'.format(tree_sitter_vc_path).split())
-  endif
-
-  tree_sitter_files = [
-    join_paths(tree_sitter_path, 'lib/src/lib.c'),
-  ]
-
-  tree_sitter_inc = [platform_inc, include_directories('tree-sitter/lib/src'), include_directories('tree-sitter/lib/include')]
-
-  libtree_sitter = static_library('tree_sitter', tree_sitter_files,
-    include_directories: tree_sitter_inc,
-    implicit_include_directories: false,
-    c_args: tree_sitter_cflags,
-  )
-
-  tree_sitter_dep = declare_dependency(
-    compile_args: tree_sitter_cflags,
-    link_with: libtree_sitter,
-    include_directories: tree_sitter_inc
-  )
-else
-  message('Use system-provided tree-sitter library')
-endif
-
-
-# new radare2 shell parser
-shell_parser_path = 'radare2-shell-parser'
-shell_parser_files = [
-  join_paths(shell_parser_path, 'src/parser.c'),
-  join_paths(shell_parser_path, 'src/scanner.c'),
-]
-
-shell_parser_inc = [platform_inc, include_directories('radare2-shell-parser/src/tree_sitter')]
-
-libshell_parser = static_library('shell_parser', shell_parser_files,
-  include_directories: shell_parser_inc,
-  dependencies: tree_sitter_dep.partial_dependency(includes: true),
-  implicit_include_directories: true
-)
-
-shell_parser_dep = declare_dependency(
-  link_with: libshell_parser,
-  include_directories: shell_parser_inc,
-  dependencies: tree_sitter_dep
-)
-
-
 # handle bochs dependency
 bochs_files = [
   'bochs/src/libbochs.c'
@@ -361,28 +274,7 @@ qnx_dep = declare_dependency(
 )
 
 
-# handle tcc dependency (heavily modified version)
-tcc_files = [
-  'tcc/libtcc.c',
-  'tcc/tccgen.c',
-  'tcc/tccpp.c'
-]
-
-tcc_inc = [platform_inc, include_directories('tcc')]
-
-libr2tcc = static_library('r2tcc', tcc_files,
-  dependencies: [r_util_dep],
-  include_directories: tcc_inc,
-  implicit_include_directories: false
-)
-
-tcc_dep = declare_dependency(
-  link_with: libr2tcc,
-  include_directories: tcc_inc
-)
-
-
-# handle lz4 dependency
+# handle lz4 dependency (unused?)
 lz4_dep = dependency('liblz4', required: false)
 if not lz4_dep.found() or not get_option('use_sys_lz4')
   message('Use bundled lz4')
@@ -620,11 +512,6 @@ ar_dep = declare_dependency(
   include_directories: ar_inc
 )
 
-
-# handle ptrace-wrap dependency
-if use_ptrace_wrap
-  subdir('ptrace-wrap')
-endif
 
 if host_machine.system() == 'windows'
   subdir('w32dbg_wrap')

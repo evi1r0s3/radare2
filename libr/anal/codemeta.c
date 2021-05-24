@@ -2,15 +2,47 @@
 
 #include <r_core.h>
 #include <r_codemeta.h>
-#include <r_util.h>
+
+#define USE_TRI 1
+
+R_API RCodeMetaItem *r_codemeta_item_clone(RCodeMetaItem *code) {
+	r_return_val_if_fail (code, NULL);
+	RCodeMetaItem *mi = r_codemeta_item_new ();
+	memcpy (mi, code, sizeof (RCodeMetaItem));
+	switch (mi->type) {
+	case R_CODEMETA_TYPE_FUNCTION_NAME:
+		mi->reference.name = strdup (mi->reference.name);
+		break;
+	case R_CODEMETA_TYPE_LOCAL_VARIABLE:
+	case R_CODEMETA_TYPE_FUNCTION_PARAMETER:
+		mi->variable.name = strdup (mi->variable.name);
+		break;
+	case R_CODEMETA_TYPE_CONSTANT_VARIABLE:
+	case R_CODEMETA_TYPE_OFFSET:
+	case R_CODEMETA_TYPE_SYNTAX_HIGHLIGHT:
+	case R_CODEMETA_TYPE_GLOBAL_VARIABLE:
+		break;
+	}
+	return mi;
+}
+
+R_API RCodeMeta *r_codemeta_clone(RCodeMeta *code) {
+	RCodeMeta *r = r_codemeta_new (code->code);
+	RCodeMetaItem *mi;
+	r_vector_foreach (&code->annotations, mi) {
+		r_codemeta_add_item (r, r_codemeta_item_clone (mi));
+	}
+	return r;
+}
 
 R_API RCodeMeta *r_codemeta_new(const char *code) {
 	RCodeMeta *r = R_NEW0 (RCodeMeta);
 	if (!r) {
 		return NULL;
 	}
+	r->tree = r_rbtree_cont_new ();
 	r->code = code? strdup (code): NULL;
-	r_vector_init (&r->annotations, sizeof (RCodeMetaItem), (RVectorFree)r_codemeta_item_free, NULL);
+	r_vector_init (&r->annotations, sizeof (RCodeMetaItem), (RVectorFree)r_codemeta_item_fini, NULL);
 	return r;
 }
 
@@ -18,12 +50,28 @@ R_API RCodeMetaItem *r_codemeta_item_new(void) {
 	return R_NEW0 (RCodeMetaItem);
 }
 
-R_API void r_codemeta_item_free(RCodeMetaItem *mi, void *user) {
-	(void)user;
-	if (mi->type == R_CODEMETA_TYPE_FUNCTION_NAME) {
+R_API void r_codemeta_item_free(RCodeMetaItem *mi) {
+	if (mi) {
+		r_codemeta_item_fini (mi);
+		free (mi);
+	}
+}
+
+R_API void r_codemeta_item_fini(RCodeMetaItem *mi) {
+	r_return_if_fail (mi);
+	switch (mi->type) {
+	case R_CODEMETA_TYPE_FUNCTION_NAME:
 		free (mi->reference.name);
-	} else if (mi->type == R_CODEMETA_TYPE_LOCAL_VARIABLE || mi->type == R_CODEMETA_TYPE_FUNCTION_PARAMETER) {
+		break;
+	case R_CODEMETA_TYPE_LOCAL_VARIABLE:
+	case R_CODEMETA_TYPE_FUNCTION_PARAMETER:
 		free (mi->variable.name);
+		break;
+	case R_CODEMETA_TYPE_CONSTANT_VARIABLE:
+	case R_CODEMETA_TYPE_OFFSET:
+	case R_CODEMETA_TYPE_SYNTAX_HIGHLIGHT:
+	case R_CODEMETA_TYPE_GLOBAL_VARIABLE:
+		break;
 	}
 }
 
@@ -42,28 +90,74 @@ R_API void r_codemeta_free(RCodeMeta *code) {
 		return;
 	}
 	r_vector_clear (&code->annotations);
+	r_rbtree_cont_free (code->tree);
 	r_free (code->code);
 	r_free (code);
 }
 
-R_API void r_codemeta_add_annotation(RCodeMeta *code, RCodeMetaItem *mi) {
+#if USE_TRI
+
+static int cmp_ins(void *incoming, void *in, void *user) {
+	RCodeMetaItem *mi = in;
+	RCodeMetaItem *mi2 = incoming;
+	const size_t mid = mi->start + (mi->end - mi->start) / 2;	// this is buggy since 2/2 = 1/2 in C
+	const size_t mid2 = mi2->start + (mi2->end - mi2->start) / 2;
+	if (mid > mid2) {
+		return -1;
+	} else if (mid < mid2) {
+		return 1;
+	} else {
+		const ut32 mod = (mi->end - mi->start) & 0x1;	// this fixes the buggy
+		const ut32 mod2 = (mi2->end - mi2->start) & 0x1;
+		if (mod > mod2) {
+			return -1;
+		} else if (mod < mod2) {
+			return 1;
+		}
+	}
+	return ((int)mi2->type) - ((int)mi->type);	// avoid weird things
+}
+
+// cmp to find the lowest mid, that is bigger than or equal to search_mid
+// consider adding mod-bit to search_mid
+static int cmp_find_min_mid(void *incoming, void *in, void *user) {
+	RCodeMetaItem **min = (RCodeMetaItem **)user;
+	RCodeMetaItem *mi = (RCodeMetaItem *)in;
+	size_t *search_mid = (size_t *)incoming;
+	const size_t mid = mi->start + (mi->end - mi->start) / 2;
+	if (mid > search_mid[0]) {
+		if (!min[0]) {
+			min[0] = mi;
+			return -1;
+		}
+		const size_t min_mid = min[0]->start + (min[0]->end - min[0]->start) / 2;
+		if (mid < min_mid) {
+			min[0] = mi;
+		} else if (mid == min_mid) {
+			const ut32 mod = (mi->end - mi->start) & 0x1;
+			const ut32 min_mod = (min[0]->end - min[0]->start) & 0x1;
+			if (mod < min_mod) {
+				min[0] = mi;
+			}
+		}
+		return -1;
+	} else if (mid == search_mid[0]) {
+		min[0] = mi;
+		return 0;
+	}
+	return 1;
+}
+
+#endif
+
+R_API void r_codemeta_add_item(RCodeMeta *code, RCodeMetaItem *mi) {
 	r_return_if_fail (code && mi);
 	r_vector_push (&code->annotations, mi);
+	r_rbtree_cont_insert (code->tree, mi, cmp_ins, NULL);
 }
 
 R_API RPVector *r_codemeta_at(RCodeMeta *code, size_t offset) {
-	r_return_val_if_fail (code, NULL);
-	RPVector *r = r_pvector_new (NULL);
-	if (!r) {
-		return NULL;
-	}
-	RCodeMetaItem *mi;
-	r_vector_foreach (&code->annotations, mi) {
-		if (offset >= mi->start && offset < mi->end) {
-			r_pvector_push (r, mi);
-		}
-	}
-	return r;
+	return r_codemeta_in (code, offset, offset + 1);
 }
 
 R_API RPVector *r_codemeta_in(RCodeMeta *code, size_t start, size_t end) {
@@ -72,6 +166,39 @@ R_API RPVector *r_codemeta_in(RCodeMeta *code, size_t start, size_t end) {
 	if (!r) {
 		return NULL;
 	}
+#if USE_TRI
+	size_t search_start = start / 2;
+	RCodeMetaItem *min = NULL;
+	r_rbtree_cont_find (code->tree, &search_start, cmp_find_min_mid, &min);
+	if (min) {
+		const size_t end_mid = (end - 1) + ((SIZE_MAX - end - 1) / 2);
+		RContRBNode *node = r_rbtree_cont_find_node (code->tree, min, cmp_ins, NULL);	//get node for min
+		RContRBNode *prev = r_rbtree_cont_node_prev (node);
+		while (prev) {
+			RCodeMetaItem *mi = (RCodeMetaItem *)prev->data;
+			if (mi->end <= start) {
+				break;
+			}
+			node = prev;
+			prev = r_rbtree_cont_node_prev (node);
+		}
+		while (node) {
+			RCodeMetaItem *mi = (RCodeMetaItem *)node->data;
+			if (!(start >= mi->end || end < mi->start)) {
+				r_pvector_push (r, mi);
+			}
+			node = r_rbtree_cont_node_next (node);
+			if (node) {
+				mi = (RCodeMetaItem *)node->data;
+				const size_t mi_mid = mi->start + (mi->end - mi->start) / 2;
+				if (end_mid < mi_mid) {
+					break;
+				}
+			}
+		}
+	}
+	return r;
+#else
 	RCodeMetaItem *mi;
 	r_vector_foreach (&code->annotations, mi) {
 		if (start >= mi->end || end < mi->start) {
@@ -80,6 +207,7 @@ R_API RPVector *r_codemeta_in(RCodeMeta *code, size_t start, size_t end) {
 		r_pvector_push (r, mi);
 	}
 	return r;
+#endif
 }
 
 R_API RVector *r_codemeta_line_offsets(RCodeMeta *code) {

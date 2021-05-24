@@ -309,6 +309,7 @@ R_API RBreakpointItem *r_debug_bp_add(RDebug *dbg, ut64 addr, int hw, bool watch
 		}
 		if (!valid) {
 			eprintf ("Warning: module's base addr + delta is not a valid address\n");
+			free (module_name);
 			return NULL;
 		}
 	}
@@ -336,10 +337,11 @@ R_API RBreakpointItem *r_debug_bp_add(RDebug *dbg, ut64 addr, int hw, bool watch
 		if (module_name) {
 			bpi->module_name = strdup (module_name);
 			bpi->name = r_str_newf ("%s+0x%" PFMT64x, module_name, m_delta);
-			free (module_name);
+			R_FREE (module_name);
 		}
 		bpi->module_delta = m_delta;
 	}
+	free (module_name);
 	return bpi;
 }
 
@@ -633,6 +635,8 @@ R_API bool r_debug_select(RDebug *dbg, int pid, int tid) {
 		pc = r_debug_reg_get (dbg, "PC");
 		core->offset = pc;
 	}
+
+	dbg->main_arena_resolved = false;
 
 	return true;
 }
@@ -1318,6 +1322,9 @@ repeat:
 }
 
 R_API int r_debug_continue(RDebug *dbg) {
+	if (dbg->pid < 0) {
+		return -1;
+	}
 	return r_debug_continue_kill (dbg, 0); //dbg->reason.signum);
 }
 

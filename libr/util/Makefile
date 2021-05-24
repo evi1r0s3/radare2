@@ -12,7 +12,7 @@ endif
 endif
 
 OBJS=binheap.o mem.o unum.o str.o hex.o file.o range.o charset.o
-OBJS+=prof.o cache.o sys.o buf.o w32-sys.o ubase64.o base85.o base91.o
+OBJS+=prof.o cache.o sys.o buf.o sys_w32.o ubase64.o base85.o base91.o
 OBJS+=list.o flist.o chmod.o graph.o event.o alloc.o donut.o print_code.o
 OBJS+=regex/regcomp.o regex/regerror.o regex/regexec.o uleb128.o
 OBJS+=sandbox.o calc.o thread.o thread_sem.o thread_lock.o thread_cond.o
@@ -22,7 +22,13 @@ OBJS+=utf8.o utf16.o utf32.o strbuf.o lib.o name.o spaces.o signal.o syscmd.o
 OBJS+=udiff.o bdiff.o stack.o queue.o tree.o idpool.o assert.o
 OBJS+=punycode.o pkcs7.o x509.o asn1.o astr.o json_parser.o json_indent.o skiplist.o
 OBJS+=pj.o rbtree.o intervaltree.o qrcode.o vector.o skyline.o str_constpool.o str_trim.o
-OBJS+=ascii_table.o protobuf.o graph_drawable.o
+OBJS+=ascii_table.o protobuf.o graph_drawable.o axml.o
+
+ifeq (${HAVE_GPERF},1)
+OBJS+=d/ascii.o
+OBJS+=d/pokered.o
+OBJS+=d/ebcdic37.o
+endif
 
 ifeq (${HAVE_LIB_GMP},1)
   OBJS+=big-gmp.o

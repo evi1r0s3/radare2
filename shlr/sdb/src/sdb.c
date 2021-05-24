@@ -245,34 +245,40 @@ SDB_API const char *sdb_const_get_len(Sdb* s, const char *key, int *vlen, ut32 *
 	size_t keylen = strlen (key);
 
 	/* search in memory */
-	SdbKv *kv = (SdbKv*) sdb_ht_find_kvp (s->ht, key, &found);
-	if (found) {
-		if (!sdbkv_value (kv) || !*sdbkv_value (kv)) {
-			return NULL;
-		}
-		if (s->timestamped && kv->expire) {
-			if (!now) {
-				now = sdb_now ();
-			}
-			if (now > kv->expire) {
-				sdb_unset (s, key, 0);
+	if (s->ht) {
+		SdbKv *kv = (SdbKv*) sdb_ht_find_kvp (s->ht, key, &found);
+		if (found) {
+			if (!sdbkv_value (kv) || !*sdbkv_value (kv)) {
 				return NULL;
 			}
+			if (s->timestamped && kv->expire) {
+				if (!now) {
+					now = sdb_now ();
+				}
+				if (now > kv->expire) {
+					sdb_unset (s, key, 0);
+					return NULL;
+				}
+			}
+			if (cas) {
+				*cas = kv->cas;
+			}
+			if (vlen) {
+				*vlen = sdbkv_value_len (kv);
+			}
+			return sdbkv_value (kv);
 		}
-		if (cas) {
-			*cas = kv->cas;
-		}
-		if (vlen) {
-			*vlen = sdbkv_value_len (kv);
-		}
-		return sdbkv_value (kv);
+	}
+	/* search in gperf */
+	if (s->gp && s->gp->get) {
+		return s->gp->get (key);
 	}
 	/* search in disk */
 	if (s->fd == -1) {
 		return NULL;
 	}
 	(void) cdb_findstart (&s->db);
-	if (cdb_findnext (&s->db, s->ht->opt.hashfn (key), key, keylen) < 1) {
+	if (!s->ht || cdb_findnext (&s->db, s->ht->opt.hashfn (key), key, keylen) < 1) {
 		return NULL;
 	}
 	len = cdb_datalen (&s->db);
@@ -390,6 +396,21 @@ SDB_API bool sdb_exists(Sdb* s, const char *key) {
 	return false;
 }
 
+SDB_API int sdb_open_gperf(Sdb *s, SdbGperf *gp) {
+	if (!s || !gp) {
+		return -1;
+	}
+	s->gp = gp;
+	return 0;
+}
+
+static int sdb_open_text(Sdb *s, const char *file) {
+	if (!sdb_text_load (s, file)) {
+		return -1;
+	}
+	return s->fd;
+}
+
 SDB_API int sdb_open(Sdb *s, const char *file) {
         struct stat st;
 	if (!s) {
@@ -397,7 +418,7 @@ SDB_API int sdb_open(Sdb *s, const char *file) {
 	}
 	if (file) {
 		if (sdb_text_check (s, file)) {
-			return sdb_text_load (s, file);
+			return sdb_open_text (s, file);
 		}
 		if (s->fd != -1) {
 			close (s->fd);
@@ -440,6 +461,7 @@ SDB_API void sdb_close(Sdb *s) {
 			free (s->dir);
 			s->dir = NULL;
 		}
+		s->gp = NULL;
 	}
 }
 
@@ -626,7 +648,7 @@ static ut32 sdb_set_internal(Sdb* s, const char *key, char *val, bool owned, ut3
 		sdb_hook_call (s, key, val);
 		return cas;
 	}
-// kv set failed, no need to callback	sdb_hook_call (s, key, val);
+	// kv set failed, no need to callback	sdb_hook_call (s, key, val);
 	return 0;
 }
 
@@ -780,6 +802,9 @@ SDB_API bool sdb_foreach(Sdb* s, SdbForeachCallback cb, void *user) {
 		return false;
 	}
 	s->depth++;
+	if (s->gp) {
+		return s->gp->foreach ((GperfForeachCallback)cb, user);
+	}
 	bool result = sdb_foreach_cdb (s, cb, NULL, user);
 	if (!result) {
 		return sdb_foreach_end (s, false);
@@ -955,7 +980,7 @@ SDB_API bool sdb_dump_dupnext(Sdb* s, char *key, char **value, int *_vlen) {
 	return true;
 }
 
-static inline ut64 parse_expire (ut64 e) {
+static inline ut64 parse_expire(ut64 e) {
 	const ut64 month = 30 * 24 * 60 * 60;
 	if (e > 0 && e < month) {
 		e += sdb_now ();
